@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+__MACOSX/
+
+# Backend (Spring Boot)
+Search/target/
+Search/src/main/resources/application.properties
+
+# Frontend (React)
+t-ecom/node_modules/
+t-ecom/dist/
+t-ecom/.env
+
+# VS Code
+.vscode/
