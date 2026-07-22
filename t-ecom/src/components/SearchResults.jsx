@@ -20,22 +20,19 @@ const SearchResults = () => {
   }, [location, navigate]);
 
   // Function to convert base64 string to data URL
-    const convertBase64ToDataURL = (base64String, mimeType = 'image/jpeg') => {
-      if (!base64String) return unplugged; // Return fallback image if no data
-      
-      // If it's already a data URL, return as is
-      if (base64String.startsWith('data:')) {
-        return base64String;
-      }
-      
-      // If it's already a URL, return as is
-      if (base64String.startsWith('http')) {
-        return base64String;
-      }
-      
-      // Convert base64 string to data URL
-      return `data:${mimeType};base64,${base64String}`;
-    };
+    const convertBase64ToDataURL = (base64String, mimeType = "image/jpeg") => {
+  if (!base64String) return "";
+
+  if (base64String.startsWith("data:")) {
+    return base64String;
+  }
+
+  if (base64String.startsWith("http")) {
+    return base64String;
+  }
+
+  return `data:${mimeType};base64,${base64String}`;
+};
 
   const handleViewProduct = (productId) => {
     navigate(`/product/${productId}`);
@@ -73,9 +70,9 @@ const SearchResults = () => {
             {searchData.map((product) => (
               <div key={product.id} className="col">
                 <div className="card h-100 shadow-sm">
-                  <img 
-                    src={convertBase64ToDataURL(product.productImage)} 
-                    className="card-img-top p-3" 
+                  <img
+                    src={`${import.meta.env.VITE_BASE_URL}/api/product/${product.id}/image`}
+                    className="card-img-top p-3"
                     alt={product.name}
                     style={{ height: "200px", objectFit: "contain", cursor: "pointer" }}
                     onClick={() => handleViewProduct(product.id)}

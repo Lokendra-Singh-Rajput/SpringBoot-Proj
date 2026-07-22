@@ -8,6 +8,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppProvider } from "./Context/Context";
 import UpdateProduct from "./components/UpdateProduct";
 import Order from "./components/Order";
+import Login from "./components/Login";
+
 
 import SearchResults from "./components/SearchResults";
  
@@ -31,6 +33,7 @@ function App() {
         <Navbar onSelectCategory={handleCategorySelect} />
         <div className="min-vh-100 bg-light">
           <Routes>
+            <Route path="/login" element={<Login />} />
             <Route
               path="/"
               element={

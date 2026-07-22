@@ -28,8 +28,7 @@ export const AppProvider = ({ children }) => {
       setCart(updatedCart);
       localStorage.setItem('cart', JSON.stringify(updatedCart));
     } else {
-      const { imageData, ...productWithoutImage } = product; // ← only change
-      const updatedCart = [...cart, { ...productWithoutImage, quantity: 1 }];
+      const updatedCart = [...cart, { ...product, quantity: 1 }];
       setCart(updatedCart);
       localStorage.setItem('cart', JSON.stringify(updatedCart));
     }
@@ -44,13 +43,13 @@ export const AppProvider = ({ children }) => {
   };
 
   const refreshData = async () => {
-    try {
-      const response = await axios.get(`${baseUrl}/api/products`);
-      setData(response.data);
-    } catch (error) {
-      setIsError(error.message);
-    }
-  };
+  try {
+    const response = await axios.get("/api/products");
+    setData(response.data);
+  } catch (error) {
+    setIsError(error.message);
+  }
+};
 
   const clearCart =() =>{
     setCart([]);
