@@ -4,18 +4,68 @@ import Navbar from "./components/Navbar";
 import Cart from "./components/Cart";
 import AddProduct from "./components/AddProduct";
 import Product from "./components/Product";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  useLocation,
+} from "react-router-dom";
 import { AppProvider } from "./Context/Context";
 import UpdateProduct from "./components/UpdateProduct";
 import Order from "./components/Order";
 import Login from "./components/Login";
-
-
 import SearchResults from "./components/SearchResults";
- 
+
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 import { ToastContainer } from "react-toastify";
+
+function AppContent({ selectedCategory, handleCategorySelect }) {
+  const location = useLocation();
+
+  const hideNavbar = location.pathname === "/login";
+
+  return (
+    <>
+      {!hideNavbar && (
+        <Navbar onSelectCategory={handleCategorySelect} />
+      )}
+
+      <div className="min-vh-100 bg-light">
+        <Routes>
+          <Route path="/login" element={<Login />} />
+
+          <Route
+            path="/"
+            element={
+              <Home selectedCategory={selectedCategory} />
+            }
+          />
+
+          <Route path="/add_product" element={<AddProduct />} />
+
+          <Route path="/product" element={<Product />} />
+
+          <Route path="/product/:id" element={<Product />} />
+
+          <Route path="/cart" element={<Cart />} />
+
+          <Route
+            path="/product/update/:id"
+            element={<UpdateProduct />}
+          />
+
+          <Route path="/orders" element={<Order />} />
+
+          <Route
+            path="/search-results"
+            element={<SearchResults />}
+          />
+        </Routes>
+      </div>
+    </>
+  );
+}
 
 function App() {
   const [selectedCategory, setSelectedCategory] = useState("");
@@ -28,28 +78,15 @@ function App() {
   return (
     <AppProvider>
       <BrowserRouter>
-        <ToastContainer autoClose={2000}
-          hideProgressBar={true} />
-        <Navbar onSelectCategory={handleCategorySelect} />
-        <div className="min-vh-100 bg-light">
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route
-              path="/"
-              element={
-                <Home selectedCategory={selectedCategory} />
-              }
-            />
-            <Route path="/add_product" element={<AddProduct />} />
-            <Route path="/product" element={<Product />} />
-            <Route path="product/:id" element={<Product />} />
-            <Route path="/cart" element={<Cart />} />
-            <Route path="/product/update/:id" element={<UpdateProduct />} />
-            <Route path="/orders" element={<Order />} />
-            <Route path="/search-results" element={<SearchResults />} />
-             
-          </Routes>
-        </div>
+        <ToastContainer
+          autoClose={2000}
+          hideProgressBar={true}
+        />
+
+        <AppContent
+          selectedCategory={selectedCategory}
+          handleCategorySelect={handleCategorySelect}
+        />
       </BrowserRouter>
     </AppProvider>
   );
