@@ -310,7 +310,7 @@ public class RagService {
         if (result.isEmpty()) {
             if (!sqlFiltered.isEmpty()) {
                 result.addAll(sqlFiltered.stream().limit(DEFAULT_TOP_K).toList());
-            } else {
+            } else if (minPrice == null && maxPrice == null && category == null) {
                 result.addAll(vectorProducts);
             }
         }
@@ -446,22 +446,23 @@ public class RagService {
     }
 
     private BigDecimal extractMaxPrice(String text) {
+        String clean = text != null ? text.replace(",", "") : "";
         Pattern lakhPattern = Pattern.compile("(?i)(?:under|below|less than|max|within)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:lakh|lac|l)\\b");
-        Matcher lakhMatcher = lakhPattern.matcher(text);
+        Matcher lakhMatcher = lakhPattern.matcher(clean);
         if (lakhMatcher.find()) {
             double val = Double.parseDouble(lakhMatcher.group(1));
             return BigDecimal.valueOf((long) (val * 100000));
         }
 
         Pattern kPattern = Pattern.compile("(?i)(?:under|below|less than|max|within)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9]+)\\s*k\\b");
-        Matcher kMatcher = kPattern.matcher(text);
+        Matcher kMatcher = kPattern.matcher(clean);
         if (kMatcher.find()) {
             long val = Long.parseLong(kMatcher.group(1));
             return BigDecimal.valueOf(val * 1000);
         }
 
         Pattern numPattern = Pattern.compile("(?i)(?:under|below|less than|max|within)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9]{3,7})\\b");
-        Matcher numMatcher = numPattern.matcher(text);
+        Matcher numMatcher = numPattern.matcher(clean);
         if (numMatcher.find()) {
             return new BigDecimal(numMatcher.group(1));
         }
@@ -469,12 +470,13 @@ public class RagService {
     }
 
     private BigDecimal extractMinPrice(String text) {
+        String clean = text != null ? text.replace(",", "") : "";
         Pattern p = Pattern.compile("(?i)(?:above|over|more than|min|at least)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9]+)\\s*(?:k|000)?\\b");
-        Matcher m = p.matcher(text);
+        Matcher m = p.matcher(clean);
         if (m.find()) {
             String raw = m.group(1);
             long val = Long.parseLong(raw);
-            if (text.toLowerCase().contains(raw + "k")) {
+            if (clean.toLowerCase().contains(raw + "k")) {
                 val *= 1000;
             }
             return BigDecimal.valueOf(val);
@@ -528,17 +530,31 @@ public class RagService {
     }
 
     public List<Product> semanticSearch(String query, int topK) {
-        int limit = topK <= 0 ? DEFAULT_TOP_K : topK;
-        try {
-            List<Document> docs = vectorService.semanticSearch(query, limit);
-            List<Product> products = resolveProducts(docs);
-            if (!products.isEmpty()) {
-                return products;
-            }
-        } catch (Exception e) {
-            log.warn("Semantic vector search exception: {}", e.getMessage());
+        if (query == null || query.isBlank()) {
+            return Collections.emptyList();
         }
-        return smartKeywordSearch(query, limit);
+        String lowerQuery = query.toLowerCase().trim();
+        BigDecimal maxPrice = extractMaxPrice(lowerQuery);
+        BigDecimal minPrice = extractMinPrice(lowerQuery);
+        String category = extractCategory(lowerQuery);
+
+        List<ToolCallRecord> ignoredCalls = new ArrayList<>();
+        List<Product> products = executeHybridSearch(query, category, minPrice, maxPrice, ignoredCalls);
+
+        if (maxPrice != null || minPrice != null) {
+            products = products.stream()
+                    .filter(p -> matchesPriceBounds(p, minPrice, maxPrice))
+                    .collect(Collectors.toList());
+        }
+
+        if (category != null) {
+            products = products.stream()
+                    .filter(p -> p.getCategory() != null && p.getCategory().equalsIgnoreCase(category))
+                    .collect(Collectors.toList());
+        }
+
+        int limit = topK <= 0 ? DEFAULT_TOP_K : topK;
+        return products.stream().limit(limit).collect(Collectors.toList());
     }
 
     private List<Product> smartKeywordSearch(String query, int limit) {
