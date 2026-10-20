@@ -1,5 +1,6 @@
 package com.lokendra.springecom.service;
 
+import com.google.genai.Client;
 import com.lokendra.springecom.model.Order;
 import com.lokendra.springecom.model.Product;
 import com.lokendra.springecom.model.dto.AgentAction;
@@ -9,13 +10,14 @@ import com.lokendra.springecom.repo.OrderRepo;
 import com.lokendra.springecom.repo.ProductRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,35 +31,40 @@ public class RagService {
     private static final int DEFAULT_TOP_K = 6;
 
     private static final String SYSTEM_PROMPT_TEMPLATE = """
-            You are "Lokendra AI", the elite autonomous shopping assistant for Lokendra Store (India's premier electronics & lifestyle e-commerce platform).
-            
-            Operating Mode: Autonomous Agent with Grounded RAG.
-            
-            YOUR GUIDELINES:
-            1. ONLY recommend products that exist in the CATALOG CONTEXT below. Do not fabricate products, specs, or prices.
-            2. Always format prices in Indian Rupees (₹) with appropriate commas (e.g. ₹1,49,990).
-            3. When you refer to any product, include its citation badge format: [Source: <Product Name> | ID: <ID> | ₹<Price>].
-            4. If a tool was executed (like adding an item to the cart, applying a coupon, or checking an order), clearly acknowledge the action to the customer.
-            5. If a product is out of stock (stock = 0), explicitly warn the customer and suggest an in-stock alternative.
+            You are "Lokendra AI", the elite autonomous shopping concierge for Lokendra Store (India's premier e-commerce platform).
+
+            OPERATING INSTRUCTIONS:
+            1. If the customer asks about store rules, shipping, returns, refunds, payments, warranty, delivery times, or how to manage their cart, answer clearly and accurately using the STORE POLICIES CONTEXT below.
+            2. If the customer is shopping for products, ONLY recommend items present in the GROUNDED CATALOG CONTEXT. Do not fabricate products or specifications. Include citation format: [Source: <Product Name> | ID: <ID> | ₹<Price>].
+            3. Always format currency in Indian Rupees (₹) with appropriate commas (e.g. ₹1,49,990).
+            4. If the customer's request cannot be completed directly (such as clearing cart or unsupported actions), explain kindly and guide them to the right place on the website (e.g. "You can manage or clear items anytime by visiting the Cart page at the top right").
+            5. If the inquiry is off-topic or unrelated to the store or products, politely explain your scope as the store shopping assistant.
             6. Keep your tone professional, energetic, transparent, and direct.
-            
+
             ════════════════════════════════════════
             AGENT TOOL EXECUTION TRACE:
             %s
             ════════════════════════════════════════
-            
+
             ════════════════════════════════════════
-            RETRIEVED CATALOG & ORDER CONTEXT:
+            STORE POLICIES & CUSTOMER SERVICE CONTEXT:
+            %s
+            ════════════════════════════════════════
+
+            ════════════════════════════════════════
+            GROUNDED CATALOG & ORDER CONTEXT:
             %s
             ════════════════════════════════════════
             """;
 
-    @Autowired
-    @Qualifier("ollamaChatModel")
-    private org.springframework.ai.chat.model.ChatModel chatModel;
+    @Value("${spring.ai.google.genai.api-key:}")
+    private String geminiApiKey;
 
-    @org.springframework.beans.factory.annotation.Value("${spring.ai.ollama.base-url:http://localhost:11434}")
-    private String ollamaBaseUrl;
+    @Value("${spring.ai.google.genai.chat.model:gemini-flash-latest}")
+    private String geminiChatModel;
+
+    @Autowired
+    private StorePolicyService storePolicyService;
 
     @Autowired
     private ProductVectorService vectorService;
@@ -68,9 +75,19 @@ public class RagService {
     @Autowired
     private OrderRepo orderRepo;
 
-    
+    private Client genAiClient;
 
-    
+    private synchronized Client getGenAiClient() {
+        if (genAiClient == null && geminiApiKey != null && !geminiApiKey.isBlank()) {
+            try {
+                genAiClient = Client.builder().apiKey(geminiApiKey.trim()).build();
+            } catch (Exception e) {
+                log.warn("Could not create Gemini Client: {}", e.getMessage());
+            }
+        }
+        return genAiClient;
+    }
+
     public AgentResponse chatWithAgent(String message) {
         log.info("Agent received query: '{}'", message);
 
@@ -81,92 +98,93 @@ public class RagService {
 
         String lowerQuery = message.toLowerCase().trim();
 
-        
-        thoughtProcess.append("1. [Intent Analysis] Analyzing natural language intent and numerical constraints.\n");
+        thoughtProcess.append("1. [Intent Analysis] Analyzing conversational intent, constraints, and store knowledge scope.\n");
 
         BigDecimal maxPrice = extractMaxPrice(lowerQuery);
         BigDecimal minPrice = extractMinPrice(lowerQuery);
         String category = extractCategory(lowerQuery);
+
         boolean isAddToCart = lowerQuery.contains("add to cart") || lowerQuery.contains("put in cart") || lowerQuery.contains("buy this") || lowerQuery.startsWith("add ");
+        boolean isClearCart = lowerQuery.contains("cart") && (lowerQuery.contains("remove") || lowerQuery.contains("clear") || lowerQuery.contains("empty") || lowerQuery.contains("delete"));
         boolean isOrderQuery = lowerQuery.contains("order") || lowerQuery.contains("track") || lowerQuery.contains("shipment") || lowerQuery.contains("status");
         boolean isCouponQuery = lowerQuery.contains("coupon") || lowerQuery.contains("discount") || lowerQuery.contains("promo");
         boolean isCompareQuery = lowerQuery.contains("compare") || lowerQuery.contains("versus") || lowerQuery.contains("vs ") || lowerQuery.contains("difference between");
+        boolean isPolicyQuery = storePolicyService.isPolicyOrStoreInquiry(lowerQuery);
+        boolean isProductSearch = !isClearCart && (isAddToCart || isCompareQuery || category != null || maxPrice != null || minPrice != null || containsProductSearchIntent(lowerQuery));
 
-        
-        List<Product> retrievedProducts = new ArrayList<>();
-        StringBuilder contextBuilder = new StringBuilder();
+        StringBuilder catalogContextBuilder = new StringBuilder();
+        StringBuilder policyContextBuilder = new StringBuilder();
 
-        
+        if (isPolicyQuery || isClearCart) {
+            thoughtProcess.append("2. [Policy RAG] Query relates to store guidelines or operation. Triggering tool: searchPolicies.\n");
+            String retrievedPolicy = storePolicyService.retrieveMatchingPolicies(message);
+            policyContextBuilder.append(retrievedPolicy);
+            toolCalls.add(new ToolCallRecord(
+                    "searchPolicies",
+                    Map.of("query", message),
+                    "Retrieved relevant store policy clauses from verified policy knowledge base.",
+                    "SUCCESS"
+            ));
+        }
+
         if (isOrderQuery) {
-            thoughtProcess.append("2. [Tool Selection] Detected order inquiry. Triggering tool: checkOrderStatus.\n");
+            thoughtProcess.append("3. [Tool Selection] Detected order inquiry. Triggering tool: checkOrderStatus.\n");
             String orderSummary = executeCheckOrderStatus(message, toolCalls, actions);
             if (!orderSummary.isEmpty()) {
-                contextBuilder.append("ORDER TRACKING CONTEXT:\n").append(orderSummary).append("\n\n");
+                catalogContextBuilder.append("ORDER TRACKING CONTEXT:\n").append(orderSummary).append("\n\n");
             }
         }
 
-        
         if (isCouponQuery) {
-            thoughtProcess.append("2. [Tool Selection] Detected discount inquiry. Triggering tool: applyCoupon.\n");
-            executeApplyCoupon(lowerQuery, toolCalls, actions, contextBuilder);
+            thoughtProcess.append("4. [Tool Selection] Detected discount inquiry. Triggering tool: applyCoupon.\n");
+            executeApplyCoupon(lowerQuery, toolCalls, actions, catalogContextBuilder);
         }
 
-        
-        thoughtProcess.append("3. [Hybrid RAG Retrieval] Triggering tool: searchProducts with dense vectors & relational constraints.\n");
-        retrievedProducts = executeHybridSearch(message, category, minPrice, maxPrice, toolCalls);
+        List<Product> retrievedProducts = new ArrayList<>();
+        if (isProductSearch) {
+            thoughtProcess.append("5. [Hybrid Catalog RAG] Triggering tool: searchProducts with dense vectors & relational constraints.\n");
+            retrievedProducts = executeHybridSearch(message, category, minPrice, maxPrice, toolCalls);
 
-        if (!retrievedProducts.isEmpty()) {
-            contextBuilder.append("GROUNDED PRODUCT CATALOG:\n");
-            for (Product p : retrievedProducts) {
-                String citation = String.format("[Source: %s | ID: %d | ₹%s]",
-                        p.getName(), p.getId(), p.getPrice() != null ? p.getPrice().toPlainString() : "0");
-                citations.add(citation);
+            if (!retrievedProducts.isEmpty()) {
+                catalogContextBuilder.append("GROUNDED PRODUCT CATALOG:\n");
+                for (Product p : retrievedProducts) {
+                    String citation = String.format("[Source: %s | ID: %d | ₹%s]",
+                            p.getName(), p.getId(), p.getPrice() != null ? p.getPrice().toPlainString() : "0");
+                    citations.add(citation);
 
-                contextBuilder.append(String.format("- Product #%d: %s | Brand: %s | Category: %s | Price: ₹%s | Stock: %d | Available: %s\n  Description: %s\n",
-                        p.getId(), p.getName(), p.getBrand(), p.getCategory(),
-                        p.getPrice() != null ? p.getPrice().toPlainString() : "0",
-                        p.getStockQuantity(), p.isProductAvailable(), p.getDescription()));
+                    catalogContextBuilder.append(String.format("- Product #%d: %s | Brand: %s | Category: %s | Price: ₹%s | Stock: %d | Available: %s\n  Description: %s\n",
+                            p.getId(), p.getName(), p.getBrand(), p.getCategory(),
+                            p.getPrice() != null ? p.getPrice().toPlainString() : "0",
+                            p.getStockQuantity(), p.isProductAvailable(), p.getDescription()));
+                }
+            } else {
+                catalogContextBuilder.append("No catalog products strictly matching current filters.\n");
             }
-        } else {
-            contextBuilder.append("No catalog products strictly matching current filters.\n");
+
+            if (isCompareQuery && retrievedProducts.size() >= 2) {
+                thoughtProcess.append("6. [Tool Selection] Detected comparative intent. Triggering tool: compareProducts.\n");
+                executeCompareProducts(retrievedProducts.get(0), retrievedProducts.get(1), toolCalls, catalogContextBuilder);
+            }
+
+            if (isAddToCart) {
+                thoughtProcess.append("7. [Tool Selection] Detected cart modification intent. Triggering tool: addToCart.\n");
+                executeAddToCart(message, retrievedProducts, toolCalls, actions);
+            }
         }
 
-        
-        if (isCompareQuery && retrievedProducts.size() >= 2) {
-            thoughtProcess.append("4. [Tool Selection] Detected comparative intent. Triggering tool: compareProducts.\n");
-            executeCompareProducts(retrievedProducts.get(0), retrievedProducts.get(1), toolCalls, contextBuilder);
-        }
+        thoughtProcess.append("8. [Grounded Synthesis] Synthesizing intelligent natural language response.\n");
 
-        
-        if (isAddToCart) {
-            thoughtProcess.append("5. [Tool Selection] Detected cart modification intent. Triggering tool: addToCart.\n");
-            executeAddToCart(message, retrievedProducts, toolCalls, actions);
-        }
-
-        thoughtProcess.append("6. [Grounded Synthesis] Synthesizing final response through LLM with fact verification.\n");
-
-        
         String toolExecutionTrace = formatToolTrace(toolCalls);
-        String systemPrompt = String.format(SYSTEM_PROMPT_TEMPLATE, toolExecutionTrace, contextBuilder.toString());
+        String systemPrompt = String.format(
+                SYSTEM_PROMPT_TEMPLATE,
+                toolExecutionTrace,
+                policyContextBuilder.length() > 0 ? policyContextBuilder.toString() : storePolicyService.getAllPoliciesSummary(),
+                catalogContextBuilder.toString()
+        );
 
-        String replyText;
-        if (isOllamaReachable()) {
-            try {
-                ChatClient chatClient = ChatClient.create(chatModel);
-                replyText = chatClient.prompt()
-                        .system(systemPrompt)
-                        .user(message)
-                        .call()
-                        .chatResponse()
-                        .getResult()
-                        .getOutput()
-                        .getText();
-            } catch (Exception e) {
-                log.error("LLM Generation failed: {}", e.getMessage(), e);
-                replyText = buildFallbackResponse(retrievedProducts, actions, isAddToCart, isOrderQuery);
-            }
-        } else {
-            replyText = buildFallbackResponse(retrievedProducts, actions, isAddToCart, isOrderQuery);
+        String replyText = callGeminiLlm(systemPrompt, message);
+        if (replyText == null || replyText.isBlank()) {
+            replyText = buildFallbackResponse(message, retrievedProducts, actions, isAddToCart, isClearCart, isOrderQuery, isPolicyQuery);
         }
 
         return new AgentResponse(
@@ -179,14 +197,77 @@ public class RagService {
         );
     }
 
-    
+    private String callGeminiLlm(String systemPrompt, String userMessage) {
+        Client client = getGenAiClient();
+        if (client == null) {
+            return null;
+        }
+
+        try {
+            String combinedPrompt = systemPrompt + "\n\nCUSTOMER MESSAGE: " + userMessage + "\n\nLOKENDRA AI RESPONSE:";
+            return client.models.generateContent(
+                    geminiChatModel != null && !geminiChatModel.isBlank() ? geminiChatModel : "gemini-flash-latest",
+                    combinedPrompt,
+                    null
+            ).text();
+        } catch (Exception e) {
+            log.warn("Gemini LLM call did not succeed, using grounded fallback: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private boolean containsProductSearchIntent(String q) {
+        String[] keywords = {
+                "find", "show", "search", "buy", "looking for", "recommend", "laptop", "phone", "mobile",
+                "headphone", "earphone", "macbook", "electronics", "price", "budget", "under", "spec",
+                "cheap", "best", "available", "store", "product", "item", "gadget", "brand"
+        };
+        for (String kw : keywords) {
+            if (q.contains(kw)) return true;
+        }
+        return false;
+    }
+
+    private String buildFallbackResponse(String message, List<Product> products, List<AgentAction> actions,
+                                          boolean isCart, boolean isClearCart, boolean isOrder, boolean isPolicy) {
+        if (isClearCart) {
+            return "🗑️ **Cart Management**: You can manage and empty your cart anytime directly from the **Cart** page (click the Cart icon at the top right of your screen) where you can remove individual items or clear the whole cart with one click!";
+        }
+
+        if (isCart && !actions.isEmpty()) {
+            return "🛒 I have successfully added the selected product directly to your cart!";
+        }
+
+        if (isPolicy) {
+            return storePolicyService.buildPolicyDirectAnswer(message);
+        }
+
+        if (!products.isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Here are verified products matching your request:\n");
+            for (Product p : products) {
+                sb.append(String.format("• **%s** — ₹%s (%s, Stock: %d)\n",
+                        p.getName(), p.getPrice(), p.getBrand(), p.getStockQuantity()));
+            }
+            return sb.toString();
+        }
+
+        if (isOrder) {
+            return "To check your order status, please provide your Order ID (e.g. ORD5DB06215) or visit the Orders page in the top menu.";
+        }
+
+        String lower = message.toLowerCase();
+        if (lower.contains("hi") || lower.contains("hello") || lower.contains("hey")) {
+            return "👋 Hello! I am your Lokendra Store AI Concierge. I can help you search our catalog, track orders, check store policies (free shipping above ₹499, 7-day replacements), and apply promotional discount codes!";
+        }
+
+        return "I am your Lokendra Store AI assistant. I can help you search for products, check 7-day return policies, track orders, or find current discounts. Please let me know what product or store policy you'd like help with!";
+    }
 
     public RagResponse chat(String message) {
         AgentResponse agentResponse = chatWithAgent(message);
         return new RagResponse(agentResponse.reply(), agentResponse.products());
     }
-
-    
 
     private List<Product> executeHybridSearch(String query, String category,
                                               BigDecimal minPrice, BigDecimal maxPrice,
@@ -197,7 +278,6 @@ public class RagService {
         if (minPrice != null) args.put("minPrice", minPrice);
         if (maxPrice != null) args.put("maxPrice", maxPrice);
 
-        
         List<Product> vectorProducts = new ArrayList<>();
         try {
             List<Document> vectorDocs = vectorService.semanticSearch(query, DEFAULT_TOP_K);
@@ -235,7 +315,6 @@ public class RagService {
             }
         }
 
-        
         List<Product> finalProducts = result.stream().distinct().limit(DEFAULT_TOP_K).collect(Collectors.toList());
 
         toolCalls.add(new ToolCallRecord(
@@ -256,7 +335,6 @@ public class RagService {
 
         Product targetProduct = null;
 
-        
         for (Product p : products) {
             if (message.toLowerCase().contains(p.getName().toLowerCase()) ||
                 message.toLowerCase().contains(p.getBrand().toLowerCase())) {
@@ -265,7 +343,6 @@ public class RagService {
             }
         }
 
-        
         if (targetProduct == null && !products.isEmpty()) {
             targetProduct = products.get(0);
         }
@@ -368,10 +445,7 @@ public class RagService {
                 b.getName(), b.getPrice(), b.getBrand(), b.getDescription()));
     }
 
-    
-
     private BigDecimal extractMaxPrice(String text) {
-        
         Pattern lakhPattern = Pattern.compile("(?i)(?:under|below|less than|max|within)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:lakh|lac|l)\\b");
         Matcher lakhMatcher = lakhPattern.matcher(text);
         if (lakhMatcher.find()) {
@@ -382,111 +456,73 @@ public class RagService {
         Pattern kPattern = Pattern.compile("(?i)(?:under|below|less than|max|within)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9]+)\\s*k\\b");
         Matcher kMatcher = kPattern.matcher(text);
         if (kMatcher.find()) {
-            double val = Double.parseDouble(kMatcher.group(1));
-            return BigDecimal.valueOf((long) (val * 1000));
+            long val = Long.parseLong(kMatcher.group(1));
+            return BigDecimal.valueOf(val * 1000);
         }
 
-        Pattern stdPattern = Pattern.compile("(?i)(?:under|below|less than|max|within)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9]{3,7})");
-        Matcher stdMatcher = stdPattern.matcher(text);
-        if (stdMatcher.find()) {
-            return new BigDecimal(stdMatcher.group(1));
+        Pattern numPattern = Pattern.compile("(?i)(?:under|below|less than|max|within)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9]{3,7})\\b");
+        Matcher numMatcher = numPattern.matcher(text);
+        if (numMatcher.find()) {
+            return new BigDecimal(numMatcher.group(1));
         }
-
         return null;
     }
 
     private BigDecimal extractMinPrice(String text) {
-        Pattern pattern = Pattern.compile("(?i)(?:above|over|more than|min)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9]{3,7})");
-        Matcher matcher = pattern.matcher(text);
-        if (matcher.find()) {
-            return new BigDecimal(matcher.group(1));
+        Pattern p = Pattern.compile("(?i)(?:above|over|more than|min|at least)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9]+)\\s*(?:k|000)?\\b");
+        Matcher m = p.matcher(text);
+        if (m.find()) {
+            String raw = m.group(1);
+            long val = Long.parseLong(raw);
+            if (text.toLowerCase().contains(raw + "k")) {
+                val *= 1000;
+            }
+            return BigDecimal.valueOf(val);
         }
         return null;
     }
 
     private String extractCategory(String text) {
-        if (text.contains("laptop") || text.contains("notebook") || text.contains("macbook")) return "Laptop";
-        if (text.contains("headphone") || text.contains("earphone") || text.contains("earbud") || text.contains("audio")) return "Headphones";
-        if (text.contains("mobile") || text.contains("phone") || text.contains("smartphone") || text.contains("iphone")) return "Mobile";
-        if (text.contains("watch") || text.contains("smartwatch")) return "Watch";
-        if (text.contains("shoe") || text.contains("sneaker") || text.contains("footwear")) return "Shoes";
+        String lower = text.toLowerCase();
+        if (lower.contains("laptop") || lower.contains("macbook") || lower.contains("notebook")) return "Laptop";
+        if (lower.contains("headphone") || lower.contains("earphone") || lower.contains("audio") || lower.contains("earbuds")) return "Headphone";
+        if (lower.contains("mobile") || lower.contains("phone") || lower.contains("smartphone") || lower.contains("iphone")) return "Mobile";
+        if (lower.contains("electronics") || lower.contains("gadget")) return "Electronics";
+        if (lower.contains("toy") || lower.contains("kids")) return "Toys";
+        if (lower.contains("fashion") || lower.contains("clothes") || lower.contains("wear")) return "Fashion";
         return null;
     }
 
     private int extractQuantity(String text) {
-        Pattern pattern = Pattern.compile("\\b([1-9]|10)\\b\\s*(?:units?|pcs?|items?|of)?");
-        Matcher matcher = pattern.matcher(text);
-        if (matcher.find()) {
+        Pattern p = Pattern.compile("\\b([1-9]|10)\\b\\s*(?:units?|pieces?|items?)?");
+        Matcher m = p.matcher(text);
+        if (m.find()) {
             try {
-                return Integer.parseInt(matcher.group(1));
-            } catch (Exception ignored) {}
+                return Integer.parseInt(m.group(1));
+            } catch (NumberFormatException ignored) {}
         }
         return 1;
     }
 
     private boolean matchesPriceBounds(Product p, BigDecimal min, BigDecimal max) {
-        if (p.getPrice() == null) return false;
+        if (p == null || p.getPrice() == null) return false;
         if (min != null && p.getPrice().compareTo(min) < 0) return false;
         if (max != null && p.getPrice().compareTo(max) > 0) return false;
         return true;
     }
 
     private String formatOrderDetails(Order ord) {
-        StringBuilder items = new StringBuilder();
-        if (ord.getOrderItems() != null) {
-            for (var it : ord.getOrderItems()) {
-                String name = it.getProduct() != null ? it.getProduct().getName() : "Item";
-                items.append(name).append(" (x").append(it.getQuantity()).append(", ₹").append(it.getTotalPrice()).append("); ");
-            }
-        }
-        return String.format("- Order #%s | Status: %s | Date: %s | Customer: %s | Items: [%s]",
-                ord.getOrderId(), ord.getStatus(), ord.getOrderDate(), ord.getCustomerName(), items.toString());
+        return String.format("Order #%s | Status: %s | Placed: %s | Customer: %s",
+                ord.getOrderId(), ord.getStatus(), ord.getOrderDate(), ord.getCustomerName());
     }
 
     private String formatToolTrace(List<ToolCallRecord> records) {
-        if (records.isEmpty()) return "None.";
+        if (records.isEmpty()) return "No external tools invoked for this turn.";
         StringBuilder sb = new StringBuilder();
-        for (var r : records) {
-            sb.append(String.format("- Tool [%s] | Status: %s | Summary: %s\n", r.toolName(), r.status(), r.resultSummary()));
-        }
-        return sb.toString();
-    }
-
-    private boolean isOllamaReachable() {
-        if (ollamaBaseUrl == null || ollamaBaseUrl.isBlank()) {
-            return false;
-        }
-        try {
-            java.net.URI uri = java.net.URI.create(ollamaBaseUrl);
-            String host = uri.getHost();
-            if (host == null || host.isBlank()) {
-                return false;
-            }
-            int port = uri.getPort() > 0 ? uri.getPort() : 11434;
-            try (java.net.Socket socket = new java.net.Socket()) {
-                socket.connect(new java.net.InetSocketAddress(host, port), 200);
-                return true;
-            }
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private String buildFallbackResponse(List<Product> products, List<AgentAction> actions, boolean isCart, boolean isOrder) {
-        StringBuilder sb = new StringBuilder();
-        if (isCart && !actions.isEmpty()) {
-            sb.append("🛒 I have successfully added the selected product directly to your cart!\n\n");
-        }
-        if (!products.isEmpty()) {
-            sb.append("Here are verified products matching your request:\n");
-            for (Product p : products) {
-                sb.append(String.format("• **%s** — ₹%s (%s, Stock: %d)\n",
-                        p.getName(), p.getPrice(), p.getBrand(), p.getStockQuantity()));
-            }
-        } else if (isOrder) {
-            sb.append("To check your order status, please provide your Order ID (e.g. ORD5DB06215) or visit the Orders page.");
-        } else {
-            sb.append("I couldn't find exact catalog items matching your criteria. Try browsing our categories or asking with a different budget.");
+        for (int i = 0; i < records.size(); i++) {
+            ToolCallRecord r = records.get(i);
+            sb.append(String.format("Step %d: Tool '%s' -> %s [Status: %s]\n",
+                    i + 1, r.toolName(), r.resultSummary(), r.status()));
         }
         return sb.toString();
     }
