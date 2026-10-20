@@ -135,7 +135,7 @@ public class ProductController {
     @PostMapping("/product")
     public ResponseEntity<Product> addProduct(
             @RequestPart Product product,
-            @RequestPart MultipartFile imageFile) throws IOException {
+            @RequestPart(required = false) MultipartFile imageFile) throws IOException {
 
         Product saved = productService.addOrUpdateProduct(product, imageFile);
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);

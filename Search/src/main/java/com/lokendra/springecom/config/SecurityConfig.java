@@ -62,13 +62,13 @@ public class SecurityConfig {
 
                         
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
-                                "/api/product/**").permitAll()
+                                "/api/product", "/api/product/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST,
-                                "/api/product/**").hasRole("ADMIN")
+                                "/api/product", "/api/product/**").hasRole("ADMIN")
                         .requestMatchers(org.springframework.http.HttpMethod.PUT,
-                                "/api/product/**").hasRole("ADMIN")
+                                "/api/product", "/api/product/**").hasRole("ADMIN")
                         .requestMatchers(org.springframework.http.HttpMethod.DELETE,
-                                "/api/product/**").hasRole("ADMIN")
+                                "/api/product", "/api/product/**").hasRole("ADMIN")
 
                         
                         .requestMatchers("/api/orders", "/api/orders/**").authenticated()
