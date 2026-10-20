@@ -278,17 +278,20 @@ public class RagService {
         if (minPrice != null) args.put("minPrice", minPrice);
         if (maxPrice != null) args.put("maxPrice", maxPrice);
 
+        String cleanedKeywords = cleanSearchQuery(query);
+        String effectiveQuery = cleanedKeywords.isBlank() ? (category != null ? category : query) : cleanedKeywords;
+
         List<Product> vectorProducts = new ArrayList<>();
         try {
-            List<Document> vectorDocs = vectorService.semanticSearch(query, DEFAULT_TOP_K);
+            List<Document> vectorDocs = vectorService.semanticSearch(effectiveQuery, DEFAULT_TOP_K);
             vectorProducts = resolveProducts(vectorDocs);
         } catch (Exception e) {
             log.warn("Hybrid search vector step skipped: {}", e.getMessage());
         }
 
         List<Product> sqlFiltered = productRepo.filterProducts(category, minPrice, maxPrice, false);
-        if (sqlFiltered.isEmpty() && query != null && !query.isBlank()) {
-            sqlFiltered = smartKeywordSearch(query, DEFAULT_TOP_K);
+        if (sqlFiltered.isEmpty() && effectiveQuery != null && !effectiveQuery.isBlank()) {
+            sqlFiltered = smartKeywordSearch(effectiveQuery, DEFAULT_TOP_K);
             if (minPrice != null || maxPrice != null) {
                 sqlFiltered = sqlFiltered.stream()
                         .filter(p -> matchesPriceBounds(p, minPrice, maxPrice))
@@ -446,42 +449,76 @@ public class RagService {
     }
 
     private BigDecimal extractMaxPrice(String text) {
-        String clean = text != null ? text.replace(",", "") : "";
-        Pattern lakhPattern = Pattern.compile("(?i)(?:under|below|less than|max|within)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:lakh|lac|l)\\b");
-        Matcher lakhMatcher = lakhPattern.matcher(clean);
+        if (text == null) return null;
+        String clean = text.toLowerCase().replace(",", "");
+
+        Pattern lakh = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)\\s*(?:lakh|lac|l)\\b");
+        Matcher lakhMatcher = lakh.matcher(clean);
+
+        Pattern k = Pattern.compile("([0-9]+)\\s*k\\b");
+        Matcher kMatcher = k.matcher(clean);
+
+        Pattern num = Pattern.compile("(?:rs\\.?|inr|₹)?\\s*([0-9]{4,7})\\b");
+        Matcher numMatcher = num.matcher(clean);
+
+        BigDecimal val = null;
         if (lakhMatcher.find()) {
-            double val = Double.parseDouble(lakhMatcher.group(1));
-            return BigDecimal.valueOf((long) (val * 100000));
+            double d = Double.parseDouble(lakhMatcher.group(1));
+            val = BigDecimal.valueOf((long) (d * 100000));
+        } else if (kMatcher.find()) {
+            long l = Long.parseLong(kMatcher.group(1));
+            val = BigDecimal.valueOf(l * 1000);
+        } else if (numMatcher.find()) {
+            val = new BigDecimal(numMatcher.group(1));
         }
 
-        Pattern kPattern = Pattern.compile("(?i)(?:under|below|less than|max|within)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9]+)\\s*k\\b");
-        Matcher kMatcher = kPattern.matcher(clean);
-        if (kMatcher.find()) {
-            long val = Long.parseLong(kMatcher.group(1));
-            return BigDecimal.valueOf(val * 1000);
+        boolean hasMaxIndicator = clean.matches(".*\\b(under|below|less|within|max|budget|upto|up to|niche)\\b.*");
+        if (val != null && hasMaxIndicator) {
+            return val;
         }
 
-        Pattern numPattern = Pattern.compile("(?i)(?:under|below|less than|max|within)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9]{3,7})\\b");
-        Matcher numMatcher = numPattern.matcher(clean);
-        if (numMatcher.find()) {
-            return new BigDecimal(numMatcher.group(1));
-        }
         return null;
     }
 
     private BigDecimal extractMinPrice(String text) {
-        String clean = text != null ? text.replace(",", "") : "";
-        Pattern p = Pattern.compile("(?i)(?:above|over|more than|min|at least)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9]+)\\s*(?:k|000)?\\b");
-        Matcher m = p.matcher(clean);
-        if (m.find()) {
-            String raw = m.group(1);
-            long val = Long.parseLong(raw);
-            if (clean.toLowerCase().contains(raw + "k")) {
-                val *= 1000;
-            }
-            return BigDecimal.valueOf(val);
+        if (text == null) return null;
+        String clean = text.toLowerCase().replace(",", "");
+
+        Pattern lakh = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)\\s*(?:lakh|lac|l)\\b");
+        Matcher lakhMatcher = lakh.matcher(clean);
+
+        Pattern k = Pattern.compile("([0-9]+)\\s*k\\b");
+        Matcher kMatcher = k.matcher(clean);
+
+        Pattern num = Pattern.compile("(?:rs\\.?|inr|₹)?\\s*([0-9]{4,7})\\b");
+        Matcher numMatcher = num.matcher(clean);
+
+        BigDecimal val = null;
+        if (lakhMatcher.find()) {
+            double d = Double.parseDouble(lakhMatcher.group(1));
+            val = BigDecimal.valueOf((long) (d * 100000));
+        } else if (kMatcher.find()) {
+            long l = Long.parseLong(kMatcher.group(1));
+            val = BigDecimal.valueOf(l * 1000);
+        } else if (numMatcher.find()) {
+            val = new BigDecimal(numMatcher.group(1));
         }
+
+        boolean hasMinIndicator = clean.matches(".*\\b(above|over|more than|min|at least)\\b.*");
+        if (val != null && hasMinIndicator) {
+            return val;
+        }
+
         return null;
+    }
+
+    private String cleanSearchQuery(String text) {
+        if (text == null) return "";
+        String clean = text.toLowerCase().replace(",", " ");
+        clean = clean.replaceAll("(?i)\\b(?:under|below|less than|less|max|within|budget|upto|up to|above|over|more than|min|at least|price|this|rupees|rs\\.?|inr|₹)\\b", " ");
+        clean = clean.replaceAll("(?i)\\b[0-9]+(?:\\.[0-9]+)?\\s*(?:lakh|lac|l|k)?\\b", " ");
+        clean = clean.replaceAll("[^a-zA-Z0-9\\s]", " ");
+        return clean.trim().replaceAll("\\s+", " ");
     }
 
     private String extractCategory(String text) {
