@@ -56,7 +56,8 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/auth/**",
                                 "/api/chat/**",
-                                "/api/products/**"
+                                "/api/products/**",
+                                "/api/product/generate-**"
                         ).permitAll()
 
                         

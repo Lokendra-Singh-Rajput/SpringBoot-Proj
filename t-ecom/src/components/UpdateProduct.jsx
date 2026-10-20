@@ -38,7 +38,7 @@ const UpdateProduct = () => {
     stockQuantity: "",
   });
 
-  const baseUrl = import.meta.env.VITE_BASE_URL;
+  const baseUrl = import.meta.env.VITE_BASE_URL || (import.meta.env.DEV ? "http://localhost:8080" : "");
 
   useEffect(() => {
     const fetchProduct = async () => {
