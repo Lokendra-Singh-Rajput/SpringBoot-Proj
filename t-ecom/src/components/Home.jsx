@@ -38,8 +38,14 @@ const Home = () => {
   const [showToast, setShowToast]           = useState(false);
   const [toastProduct, setToastProduct]     = useState(null);
   const [addedIds, setAddedIds]             = useState(new Set());
+  const [currentPage, setCurrentPage]       = useState(1);
+  const [itemsPerPage, setItemsPerPage]     = useState(12);
 
   const baseUrl = import.meta.env.VITE_BASE_URL || (import.meta.env.DEV ? "http://localhost:8080" : "");
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeCategory]);
 
   
   useEffect(() => {
@@ -73,7 +79,38 @@ const Home = () => {
   const filteredProducts =
     activeCategory === "All" ? data : data?.filter((p) => p.category === activeCategory);
 
-  
+  const totalItems = filteredProducts?.length || 0;
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const safeCurrentPage = Math.min(Math.max(currentPage, 1), totalPages);
+  const startIndex = (safeCurrentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+  const paginatedProducts = filteredProducts?.slice(startIndex, endIndex) || [];
+
+  const handlePageChange = (page) => {
+    if (page < 1 || page > totalPages) return;
+    setCurrentPage(page);
+    const elem = document.getElementById("catalog-section");
+    if (elem) {
+      elem.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
+  const getPageNumbers = () => {
+    const pages = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      if (safeCurrentPage <= 3) {
+        pages.push(1, 2, 3, 4, "...", totalPages);
+      } else if (safeCurrentPage >= totalPages - 2) {
+        pages.push(1, "...", totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+      } else {
+        pages.push(1, "...", safeCurrentPage - 1, safeCurrentPage, safeCurrentPage + 1, "...", totalPages);
+      }
+    }
+    return pages;
+  };
+
   const featured = data ? data.slice(0, Math.min(10, data.length)) : [];
 
   
@@ -283,9 +320,28 @@ const Home = () => {
               <span className="section-title-dot" />
               {activeCategory === "All" ? "All Products" : `${activeCategory} Products`}
             </h2>
-            <span className="results-count">
-              {filteredProducts?.length || 0} items found
-            </span>
+            <div className="d-flex align-items-center gap-3">
+              <span className="results-count">
+                {totalItems === 0
+                  ? "0 items"
+                  : `Showing ${startIndex + 1}–${endIndex} of ${totalItems} products`}
+              </span>
+              {totalItems > 8 && (
+                <select
+                  className="catalog-per-page-select"
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  aria-label="Products per page"
+                >
+                  <option value={8}>8 / page</option>
+                  <option value={12}>12 / page</option>
+                  <option value={24}>24 / page</option>
+                </select>
+              )}
+            </div>
           </div>
 
           {!data ? (
@@ -307,8 +363,9 @@ const Home = () => {
               </button>
             </div>
           ) : (
-            <div className="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4">
-              {filteredProducts.map((product) => {
+            <>
+              <div className="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4">
+              {paginatedProducts.map((product) => {
                 const { id, brand, name, price, productAvailable, stockQuantity, category } = product;
                 const outOfStock = !productAvailable || stockQuantity === 0;
 
@@ -410,7 +467,56 @@ const Home = () => {
                 );
               })}
             </div>
-          )}
+
+            {totalPages > 1 && (
+              <div className="catalog-pagination-wrap">
+                <div className="catalog-pagination-info">
+                  Page <span className="fw-bold" style={{ color: "var(--primary-accent)" }}>{safeCurrentPage}</span> of{" "}
+                  <span className="fw-bold">{totalPages}</span>
+                </div>
+                <ul className="catalog-pagination-nav">
+                  <li>
+                    <button
+                      type="button"
+                      className="catalog-page-btn"
+                      onClick={() => handlePageChange(safeCurrentPage - 1)}
+                      disabled={safeCurrentPage === 1}
+                      aria-label="Previous Page"
+                    >
+                      <i className="bi bi-chevron-left" />
+                    </button>
+                  </li>
+                  {getPageNumbers().map((num, idx) => (
+                    <li key={idx}>
+                      {num === "..." ? (
+                        <span className="catalog-page-ellipsis">…</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className={`catalog-page-btn ${num === safeCurrentPage ? "active" : ""}`}
+                          onClick={() => handlePageChange(num)}
+                        >
+                          {num}
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                  <li>
+                    <button
+                      type="button"
+                      className="catalog-page-btn"
+                      onClick={() => handlePageChange(safeCurrentPage + 1)}
+                      disabled={safeCurrentPage === totalPages}
+                      aria-label="Next Page"
+                    >
+                      <i className="bi bi-chevron-right" />
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            )}
+          </>
+        )}
         </div>
 
       </div>
