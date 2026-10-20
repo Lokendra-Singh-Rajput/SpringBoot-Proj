@@ -54,7 +54,8 @@ jobs:
           script: |
             cd ~/app
             git pull origin main
-            docker compose -f docker-compose.prod.yml build backend frontend
+            docker compose -f docker-compose.prod.yml build backend
+            docker compose -f docker-compose.prod.yml build --no-cache frontend
             docker compose -f docker-compose.prod.yml up -d backend frontend
             docker exec springecom-frontend nginx -s reload
             docker image prune -f
