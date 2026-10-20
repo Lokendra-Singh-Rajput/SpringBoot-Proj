@@ -1,12 +1,6 @@
-/* ===========================================================
-   GOOGLE FONT
-=========================================================== */
+
 
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
-
-/* ===========================================================
-   RESET
-=========================================================== */
 
 *{
     margin:0;
@@ -56,10 +50,6 @@ body{
         0 25px 60px rgba(0,0,0,.18);
 }
 
-/* ===========================================================
-   FORM CONTAINERS
-=========================================================== */
-
 .form-container{
 
     position:absolute;
@@ -104,10 +94,6 @@ body{
 
     z-index:5;
 }
-
-/* ===========================================================
-   FORM
-=========================================================== */
 
 .login-form{
 
@@ -173,10 +159,6 @@ body{
     border:2px solid #6C63FF;
 }
 
-/* ===========================================================
-   SOCIAL ICONS
-=========================================================== */
-
 .social-container{
     display:flex;
     justify-content:center;
@@ -236,10 +218,6 @@ body{
     transform:translateY(-3px);
 }
 
-/* ===========================================================
-   FORGOT PASSWORD
-=========================================================== */
-
 .forgot-password{
 
     text-decoration:none;
@@ -257,10 +235,6 @@ body{
 
     color:#6C63FF;
 }
-
-/* ===========================================================
-   BUTTONS
-=========================================================== */
 
 .login-btn,
 .ghost{
@@ -303,9 +277,6 @@ body{
 
     transform:translateY(-2px);
 }
-/* ===========================================================
-   OVERLAY
-=========================================================== */
 
 .overlay-container{
 
@@ -356,10 +327,6 @@ body{
     transform:translateX(50%);
 }
 
-/* ===========================================================
-   OVERLAY PANELS
-=========================================================== */
-
 .overlay-panel{
 
     position:absolute;
@@ -388,13 +355,21 @@ body{
 }
 
 .overlay-left{
-
     left:0;
+    transform:translateX(-20%);
+}
+
+.auth-container.active .overlay-left{
+    transform:translateX(0);
 }
 
 .overlay-right{
-
     right:0;
+    transform:translateX(0);
+}
+
+.auth-container.active .overlay-right{
+    transform:translateX(20%);
 }
 
 .overlay-panel h1{
@@ -419,10 +394,6 @@ body{
     margin-bottom:40px;
 }
 
-/* ===========================================================
-   GHOST BUTTON
-=========================================================== */
-
 .ghost{
 
     background:transparent;
@@ -438,10 +409,6 @@ body{
 
     color:#6C63FF;
 }
-
-/* ===========================================================
-   SMOOTH ANIMATION
-=========================================================== */
 
 .form-container,
 .overlay-container,
@@ -472,18 +439,10 @@ body{
     }
 }
 
-/* ===========================================================
-   INPUT PLACEHOLDER
-=========================================================== */
-
 .login-form input::placeholder{
 
     color:#888;
 }
-
-/* ===========================================================
-   SCROLLBAR
-=========================================================== */
 
 ::-webkit-scrollbar{
 
@@ -501,10 +460,6 @@ body{
 
     background:#888;
 }
-
-/* ===========================================================
-   RESPONSIVE
-=========================================================== */
 
 @media(max-width:992px){
 
@@ -598,9 +553,6 @@ body{
         height:48px;
     }
 }
-/* ==========================
-   SIGN UP FORM ONLY
-========================== */
 
 .signup-form{
     justify-content:center;
@@ -630,4 +582,131 @@ body{
 .signup-form .login-btn{
     width:200px;
     margin-top:30px;
+}
+
+.oauth-buttons-row {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+    max-width: 330px;
+    margin: 12px 0 14px;
+}
+
+.oauth-pill-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 42px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #1e293b;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 0 12px;
+}
+
+.oauth-pill-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.oauth-pill-btn.google-btn:hover {
+    border-color: #ea4335;
+    color: #ea4335;
+}
+
+.oauth-pill-btn.github-btn {
+    background: #24292f;
+    color: #ffffff;
+    border-color: #24292f;
+}
+
+.oauth-pill-btn.github-btn:hover {
+    background: #0f1419;
+    color: #ffffff;
+    border-color: #0f1419;
+}
+
+body.dark-theme .oauth-pill-btn.google-btn {
+    background: #1e293b;
+    color: #f8fafc;
+    border-color: #334155;
+}
+
+body.dark-theme .oauth-pill-btn.google-btn:hover {
+    border-color: #ea4335;
+    color: #f87171;
+}
+
+body.dark-theme .oauth-pill-btn.github-btn {
+    background: #0f172a;
+    color: #f8fafc;
+    border-color: #334155;
+}
+
+body.dark-theme .oauth-pill-btn.github-btn:hover {
+    background: #1e293b;
+    border-color: #475569;
+}
+
+.oauth-divider {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    max-width: 330px;
+    margin: 10px 0 14px;
+    color: #94a3b8;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.oauth-divider::before,
+.oauth-divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+body.dark-theme .oauth-divider::before,
+body.dark-theme .oauth-divider::after {
+    border-bottom: 1px solid #334155;
+}
+
+.oauth-divider span {
+    padding: 0 10px;
+}
+
+.otp-digit-input {
+    letter-spacing: 8px;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    text-align: center;
+    padding: 10px 16px !important;
+    border-radius: 10px !important;
+    border: 2px solid #6366f1 !important;
+    background: #f8fafc;
+    color: #1e1b4b;
+}
+
+body.dark-theme .otp-digit-input {
+    background: #1e293b;
+    color: #f1f5f9;
+    border-color: #818cf8 !important;
+}
+
+.auth-modal-card {
+    border-radius: 16px;
+    overflow: hidden;
+    border: none;
+}
+
+body.dark-theme .auth-modal-card {
+    background-color: #0f172a;
+    color: #f1f5f9;
 }

@@ -1,164 +1,418 @@
 import React, { useContext, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import AppContext from "../Context/Context";
+import { useAuth } from "../Context/AuthContext";
 import unplugged from "../assets/unplugged.png";
+import "./home.css";
 
-const Home = ({ selectedCategory }) => {
-  const { data, isError, addToCart, refreshData } = useContext(AppContext);
-  const [isDataFetched, setIsDataFetched] = useState(false);
-  const [showToast, setShowToast] = useState(false);
-  const [toastProduct, setToastProduct] = useState(null);
+const CATEGORIES = [
+  { name: "All",         icon: "🛍️" },
+  { name: "Laptop",      icon: "💻" },
+  { name: "Mobile",      icon: "📱" },
+  { name: "Headphone",   icon: "🎧" },
+  { name: "Electronics", icon: "⚡" },
+  { name: "Fashion",     icon: "👗" },
+  { name: "Toys",        icon: "🧸" },
+];
 
+const SkeletonCard = () => (
+  <div className="col">
+    <div className="shimmer-card" style={{ height: "340px" }}>
+      <div className="shimmer-block" style={{ height: "200px" }} />
+      <div style={{ padding: "16px 18px" }}>
+        <div className="shimmer-block rounded mb-2" style={{ height: "12px", width: "35%" }} />
+        <div className="shimmer-block rounded mb-2" style={{ height: "15px", width: "85%" }} />
+        <div className="shimmer-block rounded mb-3" style={{ height: "15px", width: "50%" }} />
+        <div className="shimmer-block rounded" style={{ height: "40px" }} />
+      </div>
+    </div>
+  </div>
+);
+
+const Home = () => {
+  const { data, isError, addToCart } = useContext(AppContext);
+  const { isLoggedIn } = useAuth();
+  const navigate = useNavigate();
+
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [showToast, setShowToast]           = useState(false);
+  const [toastProduct, setToastProduct]     = useState(null);
+  const [addedIds, setAddedIds]             = useState(new Set());
+
+  const baseUrl = import.meta.env.VITE_BASE_URL || (import.meta.env.DEV ? "http://localhost:8080" : "");
+
+  
   useEffect(() => {
-    if (!isDataFetched) {
-      refreshData();
-      setIsDataFetched(true);
-    }
-  }, [refreshData, isDataFetched]);
-
-  useEffect(() => {
-    console.log(data, 'data from home page');
-  }, [data]);
-
-  useEffect(() => {
-    let toastTimer;
-    if (showToast) {
-      toastTimer = setTimeout(() => {
-        setShowToast(false);
-      }, 3000);
-    }
-    return () => clearTimeout(toastTimer);
+    let t;
+    if (showToast) t = setTimeout(() => setShowToast(false), 3000);
+    return () => clearTimeout(t);
   }, [showToast]);
-
-  // Function to convert base64 string to data URL
-  const convertBase64ToDataURL = (base64String, mimeType = 'image/jpeg') => {
-    if (!base64String) return unplugged; // Return fallback image if no data
-    
-    // If it's already a data URL, return as is
-    if (base64String.startsWith('data:')) {
-      return base64String;
-    }
-    
-    // If it's already a URL, return as is
-    if (base64String.startsWith('http')) {
-      return base64String;
-    }
-    
-    // Convert base64 string to data URL
-    return `data:${mimeType};base64,${base64String}`;
-  };
 
   const handleAddToCart = (e, product) => {
     e.preventDefault();
+    e.stopPropagation();
+    if (!isLoggedIn) {
+      navigate("/login", {
+        state: { returnUrl: "/", message: "Please sign in to add items to your cart." },
+      });
+      return;
+    }
     addToCart(product);
     setToastProduct(product);
     setShowToast(true);
+    setAddedIds((prev) => new Set(prev).add(product.id));
+    setTimeout(() => {
+      setAddedIds((prev) => {
+        const s = new Set(prev);
+        s.delete(product.id);
+        return s;
+      });
+    }, 2000);
   };
 
-  const filteredProducts = selectedCategory
-    ? data.filter((product) => product.category === selectedCategory)
-    : data;
+  const filteredProducts =
+    activeCategory === "All" ? data : data?.filter((p) => p.category === activeCategory);
 
+  
+  const featured = data ? data.slice(0, Math.min(10, data.length)) : [];
+
+  
   if (isError) {
     return (
-      <div className="container d-flex justify-content-center align-items-center" style={{ height: "100vh" }}>
+      <div className="container d-flex justify-content-center align-items-center" style={{ minHeight: "80vh" }}>
         <div className="text-center">
-          <img src={unplugged} alt="Error" className="img-fluid" width="100" />
-          <h4 className="mt-3">Something went wrong</h4>
+          <img src={unplugged} alt="Error" width="90" className="mb-3 opacity-50" />
+          <h4 style={{ color: "var(--text-primary)" }}>Unable to reach the catalog</h4>
+          <p className="text-muted">Make sure the backend is running on port 8080.</p>
+          <button className="btn btn-minimal-primary mt-2" onClick={() => window.location.reload()}>
+            Retry
+          </button>
         </div>
       </div>
     );
   }
-  
+
   return (
     <>
-      {/* Toast Notification */}
-      <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1050 }}>
-        <div 
-          className={`toast ${showToast ? 'show' : 'hide'}`}
-          role="alert" 
-          aria-live="assertive" 
-          aria-atomic="true"
-        >
-          <div className="toast-header bg-success text-white">
-            <strong className="me-auto">Added to Cart</strong>
-            <button 
-              type="button" 
-              className="btn-close btn-close-white" 
+      
+      <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1060, marginTop: "68px" }}>
+        {showToast && toastProduct && (
+          <div className="cart-toast">
+            <div className="cart-toast-check">
+              <i className="bi bi-check" />
+            </div>
+            <img
+              src={`${baseUrl}/api/product/${toastProduct.id}/image`}
+              alt={toastProduct.name}
+              className="cart-toast-img"
+              onError={(e) => { e.target.src = unplugged; }}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="cart-toast-name text-truncate">{toastProduct.name}</div>
+              <div className="cart-toast-price">₹{toastProduct.price?.toLocaleString("en-IN")}</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Added to cart ✓</div>
+            </div>
+            <button
               onClick={() => setShowToast(false)}
-              aria-label="Close"
-            ></button>
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                padding: "4px",
+                alignSelf: "flex-start",
+              }}
+            >
+              ✕
+            </button>
           </div>
-          <div className="toast-body">
-            {toastProduct && (
-              <div className="d-flex align-items-center">
-                <img 
-                  src={convertBase64ToDataURL(toastProduct.imageData)} 
-                  alt={toastProduct.name} 
-                  className="me-2 rounded" 
-                  width="40" 
-                  height="40"
-                  onError={(e) => {
-                    e.target.src = unplugged; // Fallback image
-                  }}
-                />
-                <div>
-                  <div className="fw-bold">{toastProduct.name}</div>
-                  <small>Successfully added to your cart!</small>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </div>
 
-      <div className="container mt-5 pt-5">
-        <div className="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4">
-          {!filteredProducts || filteredProducts.length === 0 ? (
-            <div className="col-12 text-center my-5">
-              <h4>No Products Available</h4>
+      <div className="container py-4" style={{ marginTop: "70px" }}>
+
+        
+        <section className="hero-editorial">
+          <div className="hero-warm-badge">
+            <span className="hero-warm-dot" />
+            Curated 2026 Collection
+          </div>
+          <h1 className="hero-editorial-headline">
+            Curated technology &amp; design essentials for modern living.
+          </h1>
+          <p className="hero-editorial-subtext">
+            Handpicked premium laptops, studio audio, mobile gear, and lifestyle tech. Guided by intelligent hybrid AI search.
+          </p>
+
+          <div className="hero-cta-wrapper">
+            <button
+              type="button"
+              className="btn-ceramic-primary"
+              onClick={() => {
+                const el = document.getElementById("catalog-section");
+                el?.scrollIntoView({ behavior: "smooth" });
+              }}
+            >
+              EXPLORE CATALOG
+            </button>
+            <button
+              type="button"
+              className="btn-warm-ghost"
+              onClick={() => {
+                const searchInput = document.querySelector(".ai-search-input");
+                searchInput?.focus();
+              }}
+            >
+              <i className="bi bi-stars me-1" /> Ask AI Search
+            </button>
+          </div>
+
+          <p className="hero-guarantee-note">
+            100% Genuine Products · Free Express Delivery · 7-Day Returns
+          </p>
+
+          <div className="hero-metrics-strip">
+            <div className="hero-metric-item">
+              <span className="hero-metric-value">50+</span>
+              <span className="hero-metric-label">Curated Products</span>
+            </div>
+            <div className="hero-metric-divider" />
+            <div className="hero-metric-item">
+              <span className="hero-metric-value">10k+</span>
+              <span className="hero-metric-label">Satisfied Shoppers</span>
+            </div>
+            <div className="hero-metric-divider" />
+            <div className="hero-metric-item">
+              <span className="hero-metric-value">99.98%</span>
+              <span className="hero-metric-label">On-Time Delivery</span>
+            </div>
+            <div className="hero-metric-badge">
+              <div className="hero-ribbon-tag">VERIFIED</div>
+              <div className="hero-badge-text">
+                <strong>Curated Quality</strong>
+                <small>2026 Tech Selection</small>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        
+        {featured.length > 0 && (
+          <div className="mb-5">
+            <div className="section-header">
+              <h2 className="section-title">
+                <span className="section-title-dot" />
+                Featured Picks
+              </h2>
+            </div>
+
+            <div className="ticker-container">
+              
+              <div className="ticker-track">
+                {[...featured, ...featured].map((product, idx) => (
+                  <div
+                    className="ticker-card"
+                    key={`${product.id}-${idx}`}
+                    onClick={() => navigate(`/product/${product.id}`)}
+                  >
+                    <div className="ticker-card-img-wrap">
+                      <span className="ticker-card-badge">Featured</span>
+                      <img
+                        src={`${baseUrl}/api/product/${product.id}/image`}
+                        alt={product.name}
+                        onError={(e) => { e.target.src = unplugged; }}
+                      />
+                    </div>
+                    <div className="ticker-card-body">
+                      <div className="ticker-card-brand">{product.brand}</div>
+                      <div className="ticker-card-name" title={product.name}>
+                        {product.name}
+                      </div>
+                      <div className="ticker-card-footer">
+                        <span className="ticker-card-price">
+                          ₹{product.price?.toLocaleString("en-IN")}
+                        </span>
+                        <button
+                          type="button"
+                          className="ticker-card-add-btn"
+                          onClick={(e) => handleAddToCart(e, product)}
+                          disabled={!product.productAvailable || product.stockQuantity === 0}
+                          title="Add to cart"
+                        >
+                          <i
+                            className={`bi ${addedIds.has(product.id) ? "bi-check-lg" : "bi-cart-plus"}`}
+                            style={{ fontSize: "14px" }}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        
+        <div className="mb-4">
+          <div className="section-header mb-3">
+            <h2 className="section-title">
+              <span className="section-title-dot" />
+              Categories
+            </h2>
+          </div>
+          <div className="category-showcase">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat.name}
+                type="button"
+                className={`cat-pill-btn ${activeCategory === cat.name ? "active" : ""}`}
+                onClick={() => setActiveCategory(cat.name)}
+              >
+                <span>{cat.icon}</span>
+                <span>{cat.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        
+        <div id="catalog-section">
+          <div className="results-bar">
+            <h2 className="section-title">
+              <span className="section-title-dot" />
+              {activeCategory === "All" ? "All Products" : `${activeCategory} Products`}
+            </h2>
+            <span className="results-count">
+              {filteredProducts?.length || 0} items found
+            </span>
+          </div>
+
+          {!data ? (
+            
+            <div className="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4">
+              {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
+            </div>
+          ) : !filteredProducts || filteredProducts.length === 0 ? (
+            <div className="empty-state">
+              <span className="empty-state-icon">📦</span>
+              <h4 style={{ color: "var(--text-primary)" }}>No products in this category</h4>
+              <p className="text-muted">Try selecting "All" or browse other categories.</p>
+              <button
+                type="button"
+                className="btn btn-minimal-primary mt-2"
+                onClick={() => setActiveCategory("All")}
+              >
+                View All Products
+              </button>
             </div>
           ) : (
-            filteredProducts.map((product) => {
-              const { id, brand, name, price, productAvailable, imageData, stockQuantity } = product;
-              
-              return (
-                <div className="col" key={id}>
-                  <div className={`card h-100 shadow-sm ${!productAvailable ? 'bg-light' : ''}`}>
-                    <Link to={`/product/${id}`} className="text-decoration-none text-dark">
-                      <img
-                        src={convertBase64ToDataURL(imageData)} 
-                        alt={name}
-                        className="card-img-top p-2"
-                        style={{ height: "150px", objectFit: "cover" }}
-                        onError={(e) => {
-                          e.target.src = unplugged; // Fallback image if conversion fails
-                        }}
-                      />
-                      <div className="card-body d-flex flex-column">
-                        <h5 className="card-title">{name.toUpperCase()}</h5>
-                        <p className="card-text text-muted fst-italic">~ {brand}</p>
-                        <hr />
-                        <div className="mt-auto">
-                          <h5 className="mb-2 fw-bold">
-                            <i className="bi bi-currency-rupee"></i>{price}
-                          </h5>
+            <div className="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4">
+              {filteredProducts.map((product) => {
+                const { id, brand, name, price, productAvailable, stockQuantity, category } = product;
+                const outOfStock = !productAvailable || stockQuantity === 0;
+
+                return (
+                  <div className="col" key={id}>
+                    <div className="product-card">
+                      
+                      <div className="product-card-img-wrap">
+                        <img
+                          src={`${baseUrl}/api/product/${id}/image`}
+                          alt={name}
+                          onError={(e) => { e.target.src = unplugged; }}
+                        />
+                        
+                        <div className="product-card-overlay">
                           <button
-                            className="btn btn-primary w-100"
-                            onClick={(e) => handleAddToCart(e, product)}
-                            disabled={!productAvailable || stockQuantity === 0}
+                            type="button"
+                            className="product-card-view-btn"
+                            onClick={() => navigate(`/product/${id}`)}
                           >
-                            {stockQuantity !== 0 ? "Add to Cart" : "Out of Stock"}
+                            Quick View
                           </button>
                         </div>
+                        
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "12px",
+                            left: "12px",
+                            background: "rgba(15, 23, 42, 0.75)",
+                            color: "#ffffff",
+                            fontSize: "10.5px",
+                            fontWeight: 700,
+                            padding: "3px 10px",
+                            borderRadius: "9999px",
+                            backdropFilter: "blur(6px)",
+                          }}
+                        >
+                          {category}
+                        </div>
+                        
+                        {outOfStock && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: "12px",
+                              right: "12px",
+                              background: "#ef4444",
+                              color: "#ffffff",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              padding: "3px 9px",
+                              borderRadius: "9999px",
+                            }}
+                          >
+                            Sold Out
+                          </div>
+                        )}
                       </div>
-                    </Link>
+
+                      
+                      <div className="product-card-body">
+                        <div className="product-card-brand">{brand}</div>
+                        <Link to={`/product/${id}`} className="text-decoration-none">
+                          <div className="product-card-name" title={name}>{name}</div>
+                        </Link>
+
+                        <div className="product-card-footer">
+                          <span className="product-card-price">
+                            ₹{price?.toLocaleString("en-IN")}
+                          </span>
+                          <span
+                            className="product-card-stock"
+                            style={{ color: outOfStock ? "#ef4444" : "#10b981" }}
+                          >
+                            {outOfStock ? "● Out of Stock" : `● ${stockQuantity} left`}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="product-card-add-btn"
+                          onClick={(e) => handleAddToCart(e, product)}
+                          disabled={outOfStock}
+                        >
+                          {addedIds.has(id) ? (
+                            <><i className="bi bi-check-lg" /> Added!</>
+                          ) : !isLoggedIn ? (
+                            <><i className="bi bi-lock" /> Sign in to Buy</>
+                          ) : outOfStock ? (
+                            "Out of Stock"
+                          ) : (
+                            <><i className="bi bi-cart-plus" /> Add to Cart</>
+                          )}
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </div>
+
       </div>
     </>
   );

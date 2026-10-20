@@ -5,7 +5,7 @@ import { AppProvider } from "./Context/Context.jsx";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 import 'react-toastify/dist/ReactToastify.css';
-
+import './theme.css';
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

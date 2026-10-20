@@ -15,7 +15,6 @@ export const AppProvider = ({ children }) => {
   const [data, setData] = useState([]);
   const [isError, setIsError] = useState("");
   const [cart, setCart] = useState(JSON.parse(localStorage.getItem('cart')) || []);
-  const baseUrl = import.meta.env.VITE_BASE_URL;
 
   const addToCart = (product) => {
     const existingProductIndex = cart.findIndex((item) => item.id === product.id);
@@ -35,11 +34,9 @@ export const AppProvider = ({ children }) => {
   };
 
   const removeFromCart = (productId) => {
-    console.log("productID",productId)
     const updatedCart = cart.filter((item) => item.id !== productId);
     setCart(updatedCart);
     localStorage.setItem('cart', JSON.stringify(updatedCart));
-    console.log("CART",cart)
   };
 
   const refreshData = async () => {

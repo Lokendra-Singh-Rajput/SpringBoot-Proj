@@ -9,17 +9,17 @@ const SearchResults = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if search data is available in location state
+    
     if (location.state && location.state.searchData) {
       setSearchData(location.state.searchData);
       setLoading(false);
     } else {
-      // If no search data is found, redirect to home
+      
       navigate("/");
     }
   }, [location, navigate]);
 
-  // Function to convert base64 string to data URL
+  
     const convertBase64ToDataURL = (base64String, mimeType = "image/jpeg") => {
   if (!base64String) return "";
 
@@ -40,7 +40,7 @@ const SearchResults = () => {
 
   const handleAddToCart = (productId) => {
     toast.success(`Product with ID ${productId} added to cart!`);
-    // Add your cart logic here
+    
   };
 
   if (loading) {

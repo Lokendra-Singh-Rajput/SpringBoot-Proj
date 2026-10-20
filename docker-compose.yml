@@ -1,0 +1,91 @@
+
+services:
+
+  mysql:
+    image: mysql:8.0
+    container_name: springecom-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-Lokendra@5001#}
+      MYSQL_DATABASE: springecom
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./insert_50_products.sql:/docker-entrypoint-initdb.d/01_seed_products.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD:-ecompass123}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./Search
+      dockerfile: Dockerfile
+    container_name: springecom-backend
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    environment:
+      SERVER_PORT: 8080
+      DB_URL: jdbc:mysql://mysql:3306/springecom?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+      DB_USERNAME: root
+      DB_PASSWORD: ${DB_PASSWORD:-ecompass123}
+      ALLOWED_ORIGINS: http://localhost,http://localhost:80,http://localhost:3000,http://localhost:5173
+      IMAGE_UPLOAD_DIR: /app/uploads/images
+      VECTOR_STORE_PATH: /app/vector/vector-store.json
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-mistral:latest}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-MzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=}
+      SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-smtp.gmail.com}
+      SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-587}
+      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-}
+      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./Search/uploads/images:/app/uploads/images
+      - backend-vector:/app/vector
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/products?page=0&size=1"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 30s
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./t-ecom
+      dockerfile: Dockerfile
+      args:
+        VITE_BASE_URL: ""
+    container_name: springecom-frontend
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+    driver: local
+  backend-vector:
+    driver: local

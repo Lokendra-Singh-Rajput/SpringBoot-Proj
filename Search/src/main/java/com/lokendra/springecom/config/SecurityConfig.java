@@ -1,10 +1,9 @@
 package com.lokendra.springecom.config;
 
-import com.lokendra.springecom.service.CustomUserDetailsService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -24,26 +23,18 @@ import java.util.List;
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    private final CustomUserDetailsService userDetailsService;
+    @Value("${app.cors.allowed-origins:http://localhost:5173}")
+    private String allowedOrigins;
+
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    public SecurityConfig(CustomUserDetailsService userDetailsService,
-                          JwtAuthenticationFilter jwtAuthenticationFilter) {
-        this.userDetailsService = userDetailsService;
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
     }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    public DaoAuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider provider =
-                new DaoAuthenticationProvider(userDetailsService);
-        provider.setPasswordEncoder(passwordEncoder());
-        return provider;
     }
 
     @Bean
@@ -61,24 +52,32 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-
-                        // Public endpoints
+                        .requestMatchers("/auth/me").authenticated()
                         .requestMatchers(
-                                "/auth/**"
+                                "/auth/**",
+                                "/api/chat/**",
+                                "/api/products/**"
                         ).permitAll()
 
-                        // Product APIs
+                        
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
-                                "/api/products",
-                                "/api/products/**",
-                                "/api/product/*/image",
-                                "/api/product/**"
-                        ).permitAll()
+                                "/api/product/**").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST,
+                                "/api/product/**").hasRole("ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.PUT,
+                                "/api/product/**").hasRole("ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.DELETE,
+                                "/api/product/**").hasRole("ADMIN")
 
-                        // Everything else requires login
+                        
+                        .requestMatchers("/api/orders", "/api/orders/**").authenticated()
+
+                        
+                        .requestMatchers("/auth/me").authenticated()
+
+                        
                         .anyRequest().authenticated()
                 )
-                .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class);
 
@@ -90,7 +89,7 @@ public class SecurityConfig {
 
         CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOrigins(List.of("http://localhost:5173"));
+        configuration.addAllowedOriginPattern("*");
         configuration.setAllowedMethods(List.of("*"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);

@@ -1,14 +1,13 @@
 import React, { useContext, useState, useEffect } from "react";
 import AppContext from "../Context/Context";
-import axios from "../axios";
 import CheckoutPopup from "./CheckoutPopup";
 import { Button } from 'react-bootstrap';
+import { toast } from "react-toastify";
 
 const Cart = () => {
   const { cart, removeFromCart, clearCart } = useContext(AppContext);
   const [cartItems, setCartItems] = useState([]);
   const [totalPrice, setTotalPrice] = useState(0);
-  const [cartImage, setCartImage] = useState([]);
   const [showModal, setShowModal] = useState(false);
 
   const baseUrl = import.meta.env.VITE_BASE_URL;
@@ -24,11 +23,6 @@ const Cart = () => {
     );
     setTotalPrice(total);
   }, [cartItems]);
-
-  const converUrlToFile = async (blobData, fileName) => {
-    const file = new File([blobData], fileName, { type: blobData.type });
-    return file;
-  };
 
   const handleIncreaseQuantity = (itemId) => {
     const newCartItems = cartItems.map((item) => {
@@ -59,49 +53,13 @@ const Cart = () => {
     setCartItems(newCartItems);
   };
 
-  const handleCheckout = async () => {
-    try {
-      for (const item of cartItems) {
-        const { imageUrl, imageName, imageData, imageType, quantity, ...rest } = item;
-        const updatedStockQuantity = item.stockQuantity - item.quantity;
-
-        const updatedProductData = { ...rest, stockQuantity: updatedStockQuantity };
-        console.log("updated product data", updatedProductData);
-
-        const cartProduct = new FormData();
-        cartProduct.append("imageFile", cartImage);
-        cartProduct.append(
-          "product",
-          new Blob([JSON.stringify(updatedProductData)], { type: "application/json" })
-        );
-
-        await axios
-          .put(`${baseUrl}/api/product/${item.id}`, cartProduct, {
-            headers: {
-              "Content-Type": "multipart/form-data",
-            },
-          })
-          .then((response) => {
-            console.log("Product updated successfully:", (cartProduct));
-          })
-          .catch((error) => {
-            console.error("Error updating product:", error);
-          });
-      }
-      clearCart();
-      setCartItems([]);
-      setShowModal(false);
-    } catch (error) {
-      console.log("error during checkout", error);
-    }
-  };
-
   return (
     <div className="container mt-5 pt-5">
       <div className="row justify-content-center">
         <div className="col-md-10">
           <div className="card shadow">
-            <div className="card-header bg-white">
+            <div className="card-header d-flex align-items-center gap-2">
+              <i className="bi bi-cart3 text-primary"></i>
               <h4 className="mb-0">Shopping Cart</h4>
             </div>
             <div className="card-body">
@@ -213,7 +171,7 @@ const Cart = () => {
         handleClose={() => setShowModal(false)}
         cartItems={cartItems}
         totalPrice={totalPrice}
-        handleCheckout={handleCheckout}
+        clearCart={clearCart}
       />
     </div>
   );

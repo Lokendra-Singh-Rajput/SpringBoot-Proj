@@ -3,10 +3,29 @@ import { useNavigate, useParams } from "react-router-dom";
 import axios from "../axios";
 import { toast } from "react-toastify";
 
+const CATEGORIES = [
+  { value: "Laptop", label: "💻 Laptop" },
+  { value: "Headphone", label: "🎧 Headphone" },
+  { value: "Mobile", label: "📱 Mobile" },
+  { value: "Electronics", label: "⚡ Electronics" },
+  { value: "Toys", label: "🧸 Toys" },
+  { value: "Fashion", label: "👗 Fashion" },
+  { value: "Books", label: "📚 Books" },
+  { value: "Sports", label: "⚽ Sports" },
+  { value: "Home", label: "🏠 Home & Kitchen" },
+];
+
 const UpdateProduct = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
+
   const [product, setProduct] = useState({});
-  const [image, setImage] = useState();
+  const [image, setImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [imageChanged, setImageChanged] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
+
   const [updateProduct, setUpdateProduct] = useState({
     id: null,
     name: "",
@@ -19,117 +38,89 @@ const UpdateProduct = () => {
     stockQuantity: "",
   });
 
-  const [imageChanged, setImageChanged] = useState(false);
-  const [validated, setValidated] = useState(false);
-  const [errors, setErrors] = useState({});
-    const [loading, setLoading] = useState(false);
-  
-
   const baseUrl = import.meta.env.VITE_BASE_URL;
 
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const response = await axios.get(
-          `${baseUrl}/api/product/${id}`
-        );
-
+        const response = await axios.get(`${baseUrl}/api/product/${id}`);
         setProduct(response.data);
+        setUpdateProduct(response.data);
 
-        console.log(response.data,'update product response')
-      
         const responseImage = await axios.get(
           `${baseUrl}/api/product/${id}/image`,
           { responseType: "blob" }
         );
-       const imageFile = await converUrlToFile(responseImage.data,response.data.imageName)
-        setImage(imageFile);     
-        setUpdateProduct(response.data);
+        const imageFile = new File(
+          [responseImage.data],
+          response.data.imageName || "product-image.jpg",
+          { type: responseImage.data.type }
+        );
+        setImage(imageFile);
+        setImagePreview(URL.createObjectURL(responseImage.data));
       } catch (error) {
         console.error("Error fetching product:", error);
+        toast.error("Failed to load product data.");
+      } finally {
+        setFetching(false);
       }
     };
 
     fetchProduct();
   }, [id]);
 
-  useEffect(() => {
-    console.log("image Updated", image);
-  }, [image]);
-
-
-  const navigate = useNavigate();
-
-  const converUrlToFile = async(blobData, fileName) => {
-    const file = new File([blobData], fileName, { type: blobData.type });
-    return file;
-  }
- 
-  const handleSubmit = async(e) => {
-    setLoading(true);
-    e.preventDefault();
-    console.log("images", image)
-    console.log("productsdfsfsf", updateProduct)
-    const updatedProduct = new FormData();
-    if (imageChanged && image) {
-      updatedProduct.append("imageFile", image);
-    } else {
-      // Send null or empty value when no image is selected by user
-      updatedProduct.append("imageFile", null);
-    }
-    
-    updatedProduct.append(
-      "product",
-      new Blob([JSON.stringify(updateProduct)], { type: "application/json" })
-    );
-  
-
-  console.log("formData : ", updatedProduct)
-    axios
-      .put(`${baseUrl}/api/product/${id}`, updatedProduct, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      })
-      .then((response) => {
-        console.log("Product updated successfully:", updatedProduct);
-        toast.success("product updated successfully")
-      })
-      .catch((error) => {
-        console.error("Error updating product:", error);
-        console.log("product unsuccessfull update",updateProduct)
-        toast.error("Failed to update product. Please try again.");
-      }).finally(()=>{
-        setLoading(false)
-        navigate('/')
-      }
-      );
-  };
- 
-
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setUpdateProduct({
-      ...updateProduct,
-      [name]: value,
-    });
+    setUpdateProduct((prev) => ({ ...prev, [name]: value }));
   };
-
 
   const handleImageChange = (e) => {
     if (e.target.files && e.target.files[0]) {
-      setImage(e.target.files[0]);
-      setImageChanged(true); // Mark that user has selected a new image
+      const file = e.target.files[0];
+      setImage(file);
+      setImagePreview(URL.createObjectURL(file));
+      setImageChanged(true);
     }
   };
-  
 
-  if (!product.id) {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    const formData = new FormData();
+    if (imageChanged && image) {
+      formData.append("imageFile", image);
+    } else {
+      formData.append("imageFile", new Blob([], { type: "application/octet-stream" }), "empty");
+    }
+    formData.append(
+      "product",
+      new Blob([JSON.stringify(updateProduct)], { type: "application/json" })
+    );
+
+    try {
+      await axios.put(`${baseUrl}/api/product/${id}`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success("Product updated successfully! ✅");
+      navigate("/");
+    } catch (error) {
+      console.error("Error updating product:", error);
+      toast.error("Failed to update product. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (fetching) {
     return (
       <div className="container mt-5 pt-5">
         <div className="d-flex justify-content-center align-items-center" style={{ height: "300px" }}>
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading...</span>
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status" style={{ width: "3rem", height: "3rem" }}>
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p className="text-muted">Loading product data…</p>
           </div>
         </div>
       </div>
@@ -137,199 +128,242 @@ const UpdateProduct = () => {
   }
 
   return (
-    <div className="container mt-5 pt-5">
-      <div className="row justify-content-center">
-        <div className="col-md-10">
-          <div className="card shadow">
-            <div className="card-body">
-              <h2 className="text-center mb-4">Update Product</h2>
-              
-              <form className="row g-3" noValidate validated={validated.toString()} onSubmit={handleSubmit}>
-                <div className="col-md-6">
-                  <label htmlFor="name" className="form-label fw-bold">Name</label>
-                  <input
-                    type="text"
-                    className={`form-control ${validated && errors.name ? 'is-invalid' : ''}`}
-                    placeholder={product.name}
-                    value={updateProduct.name}
-                    onChange={handleChange}
-                    name="name"
-                    id="name"
-                    required
-                  />
-                  {errors.name && <div className="invalid-feedback">{errors.name}</div>}
-                </div>
-                
-                <div className="col-md-6">
-                  <label htmlFor="brand" className="form-label fw-bold">Brand</label>
-                  <input
-                    type="text"
-                    name="brand"
-                    className={`form-control ${validated && errors.brand ? 'is-invalid' : ''}`}
-                    placeholder={product.brand}
-                    value={updateProduct.brand}
-                    onChange={handleChange}
-                    id="brand"
-                    required
-                  />
-                  {errors.brand && <div className="invalid-feedback">{errors.brand}</div>}
-                </div>
-                
-                <div className="col-12">
-                  <label htmlFor="description" className="form-label fw-bold">Description</label>
-                  <textarea
-                    className={`form-control ${validated && errors.description ? 'is-invalid' : ''}`}
-                    placeholder={product.description}
-                    value={updateProduct.description}
-                    name="description"
-                    onChange={handleChange}
-                    id="description"
-                    rows="3"
-                    required
-                  />
-                  {errors.description && <div className="invalid-feedback">{errors.description}</div>}
-                </div>
-                
-                <div className="col-md-4">
-                  <label htmlFor="price" className="form-label fw-bold">Price</label>
-                  <div className="input-group">
-                    <span className="input-group-text">Rs</span>
-                    <input
-                      type="number"
-                      className={`form-control ${validated && errors.price ? 'is-invalid' : ''}`}
-                      onChange={handleChange}
-                      value={updateProduct.price}
-                      placeholder={product.price}
-                      name="price"
-                      id="price"
-                      min="0.01"
-                      step="0.01"
-                      required
-                    />
-                    {errors.price && <div className="invalid-feedback">{errors.price}</div>}
-                  </div>
-                </div>
-                
-                <div className="col-md-4">
-                  <label htmlFor="category" className="form-label fw-bold">Category</label>
-                  <select
-                    className={`form-select ${validated && errors.category ? 'is-invalid' : ''}`}
-                    value={updateProduct.category}
-                    onChange={handleChange}
-                    name="category"
-                    id="category"
-                    required
-                  >
-                    <option value="">Select category</option>
-                    <option value="Laptop">Laptop</option>
-                    <option value="Headphone">Headphone</option>
-                    <option value="Mobile">Mobile</option>
-                    <option value="Electronics">Electronics</option>
-                    <option value="Toys">Toys</option>
-                    <option value="Fashion">Fashion</option>
-                  </select>
-                  {errors.category && <div className="invalid-feedback">{errors.category}</div>}
-                </div>
+    <div className="container mt-5 pt-5 pb-5" style={{ maxWidth: "860px" }}>
+      
+      <div className="d-flex align-items-center justify-content-between mb-4">
+        <div>
+          <h2 className="fw-bold mb-1">✏️ Update Product</h2>
+          <p className="text-muted mb-0">Editing: <strong>{product.name}</strong></p>
+        </div>
+        <button
+          type="button"
+          className="btn btn-outline-secondary btn-sm"
+          onClick={() => navigate("/")}
+        >
+          ← Back to Catalog
+        </button>
+      </div>
 
-                <div className="col-md-4">
-                  <label htmlFor="stockQuantity" className="form-label fw-bold">Stock Quantity</label>
-                  <input
-                    type="number"
-                    className={`form-control ${validated && errors.stockQuantity ? 'is-invalid' : ''}`}
-                    onChange={handleChange}
-                    placeholder={product.stockQuantity}
-                    value={updateProduct.stockQuantity}
-                    name="stockQuantity"
-                    id="stockQuantity"
-                    min="0"
-                    required
-                  />
-                  {errors.stockQuantity && <div className="invalid-feedback">{errors.stockQuantity}</div>}
-                </div>
-                
-                <div className="col-md-6">
-                  <label htmlFor="releaseDate" className="form-label fw-bold">Release Date</label>
-                  <input
-                    type="date"
-                    className={`form-control ${validated && errors.releaseDate ? 'is-invalid' : ''}`}
-                    value={updateProduct.releaseDate ? updateProduct.releaseDate.slice(0,10) : ''}
-                    name="releaseDate"
-                    onChange={handleChange}
-                    id="releaseDate"
-                    required
-                  />
-                  {errors.releaseDate && <div className="invalid-feedback">{errors.releaseDate}</div>}
-                </div>
-                
-                <div className="col-md-6">
-                  <label htmlFor="imageFile" className="form-label fw-bold">Image</label>
-                  {image && (
-                    <div className="mb-2">
-                      <img
-                        src={image ? URL.createObjectURL(image) : ""}
-                        alt={product.name}
-                        className="img-fluid rounded mb-2"
-                        style={{ height: "150px", objectFit: "contain" }}
-                      />
-                    </div>
-                  )}
-                  <input
-                    className={`form-control ${validated && errors.image ? 'is-invalid' : ''}`}
-                    type="file"
-                    onChange={handleImageChange}
-                    id="imageFile"
-                    accept="image/png, image/jpeg"
-                  />
-                  {errors.image && <div className="invalid-feedback">{errors.image}</div>}
-                  <div className="form-text">Leave empty to keep current image</div>
-                </div>
-                
-                <div className="col-12">
-                  <div className="form-check">
-                    <input
-                      className="form-check-input"
-                      type="checkbox"
-                      name="productAvailable"
-                      id="productAvailable"
-                      checked={updateProduct.productAvailable}
-                      onChange={(e) =>
-                        setUpdateProduct({ ...updateProduct, productAvailable: e.target.checked })
-                      }
-                    />
-                    <label className="form-check-label" htmlFor="productAvailable">
-                      Product Available
-                    </label>
-                  </div>
-                </div>
+      <form onSubmit={handleSubmit} noValidate>
+        
+        <div className="card-theme p-4 mb-3" style={{ borderRadius: "14px", border: "1px solid var(--border-color)", background: "var(--bg-surface)" }}>
+          <p className="text-uppercase fw-semibold mb-3" style={{ fontSize: "11px", letterSpacing: "0.8px" }}>
+            Basic Information
+          </p>
 
-                <div className="col-12 mt-4">
-                  {loading ? (
-                    <button
-                      className="btn btn-primary"
-                      type="button"
-                      disabled
-                    >
-                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                      Updating...
-                    </button>
+          <div className="row g-3">
+            <div className="col-md-6">
+              <label htmlFor="name" className="form-label fw-semibold">Product Name <span className="text-danger">*</span></label>
+              <input
+                type="text"
+                className="form-control"
+                id="name"
+                name="name"
+                value={updateProduct.name}
+                onChange={handleChange}
+                placeholder="e.g. Sony WH-1000XM5"
+                required
+              />
+            </div>
+
+            <div className="col-md-6">
+              <label htmlFor="brand" className="form-label fw-semibold">Brand <span className="text-danger">*</span></label>
+              <input
+                type="text"
+                className="form-control"
+                id="brand"
+                name="brand"
+                value={updateProduct.brand}
+                onChange={handleChange}
+                placeholder="e.g. Sony"
+                required
+              />
+            </div>
+
+            <div className="col-md-4">
+              <label htmlFor="price" className="form-label fw-semibold">Price <span className="text-danger">*</span></label>
+              <div className="input-group">
+                <span className="input-group-text fw-bold">₹</span>
+                <input
+                  type="number"
+                  className="form-control"
+                  id="price"
+                  name="price"
+                  value={updateProduct.price}
+                  onChange={handleChange}
+                  placeholder="0.00"
+                  min="0.01"
+                  step="0.01"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="col-md-4">
+              <label htmlFor="stockQuantity" className="form-label fw-semibold">Stock Quantity <span className="text-danger">*</span></label>
+              <input
+                type="number"
+                className="form-control"
+                id="stockQuantity"
+                name="stockQuantity"
+                value={updateProduct.stockQuantity}
+                onChange={handleChange}
+                placeholder="0"
+                min="0"
+                required
+              />
+            </div>
+
+            <div className="col-md-4">
+              <label htmlFor="releaseDate" className="form-label fw-semibold">Release Date</label>
+              <input
+                type="date"
+                className="form-control"
+                id="releaseDate"
+                name="releaseDate"
+                value={updateProduct.releaseDate ? updateProduct.releaseDate.slice(0, 10) : ""}
+                onChange={handleChange}
+              />
+            </div>
+
+            <div className="col-md-8">
+              <label htmlFor="category" className="form-label fw-semibold">Category <span className="text-danger">*</span></label>
+              <select
+                className="form-select"
+                id="category"
+                name="category"
+                value={updateProduct.category}
+                onChange={handleChange}
+                required
+              >
+                <option value="">Select a category</option>
+                {CATEGORIES.map((cat) => (
+                  <option key={cat.value} value={cat.value}>{cat.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-md-4 d-flex align-items-end pb-1">
+              <div className="form-check form-switch">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  role="switch"
+                  id="productAvailable"
+                  name="productAvailable"
+                  checked={updateProduct.productAvailable}
+                  onChange={(e) =>
+                    setUpdateProduct((prev) => ({ ...prev, productAvailable: e.target.checked }))
+                  }
+                  style={{ width: "2.5em", height: "1.4em" }}
+                />
+                <label className="form-check-label fw-semibold ms-2" htmlFor="productAvailable">
+                  {updateProduct.productAvailable ? (
+                    <span className="text-success">● In Stock</span>
                   ) : (
-                    <button type="submit" className="btn btn-primary">
-                      Update Product
-                    </button>
+                    <span className="text-danger">● Out of Stock</span>
                   )}
-                  <button 
-                    type="button" 
-                    className="btn btn-outline-secondary ms-2"
-                    onClick={() => navigate('/')}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
+                </label>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+
+        
+        <div className="card-theme p-4 mb-3" style={{ borderRadius: "14px", border: "1px solid var(--border-color)", background: "var(--bg-surface)" }}>
+          <p className="text-uppercase fw-semibold mb-3" style={{ fontSize: "11px", letterSpacing: "0.8px" }}>
+            Product Description
+          </p>
+          <textarea
+            className="form-control"
+            id="description"
+            name="description"
+            value={updateProduct.description}
+            onChange={handleChange}
+            placeholder="Describe the product features, specifications, and what makes it great…"
+            rows="4"
+            required
+          />
+        </div>
+
+        
+        <div className="card-theme p-4 mb-4" style={{ borderRadius: "14px", border: "1px solid var(--border-color)", background: "var(--bg-surface)" }}>
+          <p className="text-uppercase fw-semibold mb-3" style={{ fontSize: "11px", letterSpacing: "0.8px" }}>
+            Product Image
+          </p>
+
+          {imagePreview && (
+            <div
+              className="text-center mb-3 p-3 rounded"
+              style={{
+                background: "var(--bg-subtle)",
+                border: "1px dashed var(--border-color)",
+                borderRadius: "10px",
+              }}
+            >
+              <img
+                src={imagePreview}
+                alt="Product preview"
+                style={{
+                  maxHeight: "200px",
+                  maxWidth: "100%",
+                  objectFit: "contain",
+                  borderRadius: "8px",
+                }}
+              />
+              <p className="text-muted small mt-2 mb-0">
+                {imageChanged ? "✅ New image selected" : "Current product image"}
+              </p>
+            </div>
+          )}
+
+          <input
+            className="form-control"
+            type="file"
+            id="imageFile"
+            accept="image/png, image/jpeg, image/webp"
+            onChange={handleImageChange}
+          />
+          <div className="form-text mt-1">
+            Leave empty to keep the current image. Accepts PNG, JPG, WEBP.
+          </div>
+        </div>
+
+        
+        <div className="d-flex gap-3">
+          <button
+            type="submit"
+            className="btn px-4 py-2 fw-semibold"
+            disabled={loading}
+            style={{
+              background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "10px",
+              minWidth: "160px",
+            }}
+          >
+            {loading ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                Updating…
+              </>
+            ) : (
+              "✅ Update Product"
+            )}
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-outline-secondary px-4 py-2"
+            style={{ borderRadius: "10px" }}
+            onClick={() => navigate("/")}
+            disabled={loading}
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
     </div>
   );
 };

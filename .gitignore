@@ -11,5 +11,13 @@ t-ecom/node_modules/
 t-ecom/dist/
 t-ecom/.env
 
+# Docker Compose secrets — .env.example is the safe template (committed)
+.env
+*.pem
+*.key
+
 # VS Code
 .vscode/
+
+# Uploads (large binary, not for git)
+Search/uploads/

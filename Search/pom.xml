@@ -48,9 +48,19 @@
 		</dependency>
 
 		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+
+		<dependency>
     		<groupId>org.springframework.ai</groupId>
    			<artifactId>spring-ai-starter-model-ollama</artifactId>
-		</dependency>	
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-vector-store</artifactId>
+		</dependency>
 		
 		<dependency>
             <groupId>org.springframework.ai</groupId>
@@ -108,6 +118,12 @@
     		<groupId>org.springframework.boot</groupId>
     		<artifactId>spring-boot-starter-test</artifactId>
     		<scope>test</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-test</artifactId>
+			<scope>test</scope>
 		</dependency>
 		
 	</dependencies>

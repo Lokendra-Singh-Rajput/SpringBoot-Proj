@@ -11,10 +11,15 @@ import {
   useLocation,
 } from "react-router-dom";
 import { AppProvider } from "./Context/Context";
+import { AuthProvider } from "./Context/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
 import UpdateProduct from "./components/UpdateProduct";
 import Order from "./components/Order";
 import Login from "./components/Login";
 import SearchResults from "./components/SearchResults";
+import AiChatWidget from "./components/AiChatWidget";
+import SemanticSearch from "./components/SemanticSearch";
+import Footer from "./components/Footer";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
@@ -31,7 +36,7 @@ function AppContent({ selectedCategory, handleCategorySelect }) {
         <Navbar onSelectCategory={handleCategorySelect} />
       )}
 
-      <div className="min-vh-100 bg-light">
+      <div className="min-vh-100 pb-5">
         <Routes>
           <Route path="/login" element={<Login />} />
 
@@ -42,27 +47,51 @@ function AppContent({ selectedCategory, handleCategorySelect }) {
             }
           />
 
-          <Route path="/add_product" element={<AddProduct />} />
-
-          <Route path="/product" element={<Product />} />
-
-          <Route path="/product/:id" element={<Product />} />
-
-          <Route path="/cart" element={<Cart />} />
+          
+          <Route
+            path="/add_product"
+            element={
+              <ProtectedRoute requiredRole="ADMIN">
+                <AddProduct />
+              </ProtectedRoute>
+            }
+          />
 
           <Route
             path="/product/update/:id"
-            element={<UpdateProduct />}
+            element={
+              <ProtectedRoute requiredRole="ADMIN">
+                <UpdateProduct />
+              </ProtectedRoute>
+            }
           />
 
-          <Route path="/orders" element={<Order />} />
+          
+          <Route path="/product" element={<Product />} />
+          <Route path="/product/:id" element={<Product />} />
 
+          
+          <Route path="/cart" element={<Cart />} />
           <Route
             path="/search-results"
             element={<SearchResults />}
           />
+          <Route path="/semantic-search" element={<SemanticSearch />} />
+
+          
+          <Route
+            path="/orders"
+            element={
+              <ProtectedRoute>
+                <Order />
+              </ProtectedRoute>
+            }
+          />
         </Routes>
       </div>
+
+      {!hideNavbar && <Footer />}
+      {!hideNavbar && <AiChatWidget />}
     </>
   );
 }
@@ -72,23 +101,24 @@ function App() {
 
   const handleCategorySelect = (category) => {
     setSelectedCategory(category);
-    console.log("Selected category:", category);
   };
 
   return (
-    <AppProvider>
-      <BrowserRouter>
-        <ToastContainer
-          autoClose={2000}
-          hideProgressBar={true}
-        />
+    <AuthProvider>
+      <AppProvider>
+        <BrowserRouter>
+          <ToastContainer
+            autoClose={2000}
+            hideProgressBar={true}
+          />
 
-        <AppContent
-          selectedCategory={selectedCategory}
-          handleCategorySelect={handleCategorySelect}
-        />
-      </BrowserRouter>
-    </AppProvider>
+          <AppContent
+            selectedCategory={selectedCategory}
+            handleCategorySelect={handleCategorySelect}
+          />
+        </BrowserRouter>
+      </AppProvider>
+    </AuthProvider>
   );
 }
 

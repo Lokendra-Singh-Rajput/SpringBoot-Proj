@@ -1,10 +1,12 @@
 package com.lokendra.springecom.service;
 
 import java.util.Date;
+import java.util.Map;
 import java.util.function.Function;
 
 import javax.crypto.SecretKey;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import io.jsonwebtoken.Claims;
@@ -16,66 +18,78 @@ import io.jsonwebtoken.security.Keys;
 @Service
 public class JwtService {
 
-    // Base64 Encoded Secret Key
-    private static final String SECRET_KEY =
-            "MzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=";
+    
+    @Value("${jwt.secret}")
+    private String secretKey;
 
-    // 24 Hours
-    private static final long JWT_EXPIRATION = 1000 * 60 * 60 * 24;
+    
+    @Value("${jwt.expiration-ms:86400000}")
+    private long jwtExpiration;
 
-    // Generate JWT
-    public String generateToken(String username) {
+    
 
+    
+    public String generateToken(String username, String role) {
         return Jwts.builder()
                 .subject(username)
+                .claims(Map.of("role", role))
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + JWT_EXPIRATION))
+                .expiration(new Date(System.currentTimeMillis() + jwtExpiration))
                 .signWith(getSignKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
 
-    // Extract Username
+    
+    public String generateToken(String username) {
+        return generateToken(username, "USER");
+    }
+
+    
+
+    
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
     }
 
-    // Validate JWT
-    public boolean isTokenValid(String token, String username) {
-
-        String extractedUsername = extractUsername(token);
-
-        return extractedUsername.equals(username)
-                && !isTokenExpired(token);
+    
+    public String extractRole(String token) {
+        try {
+            Object role = extractClaim(token, claims -> claims.get("role"));
+            return role != null ? role.toString() : "USER";
+        } catch (Exception e) {
+            return "USER";
+        }
     }
 
-    // Check Expiration
+    
+
+    
+    public boolean isTokenValid(String token, String username) {
+        String extractedUsername = extractUsername(token);
+        return extractedUsername.equals(username) && !isTokenExpired(token);
+    }
+
     private boolean isTokenExpired(String token) {
         return extractExpiration(token).before(new Date());
     }
 
-    // Extract Expiration Date
     private Date extractExpiration(String token) {
         return extractClaim(token, Claims::getExpiration);
     }
 
-    // Generic Claim Extractor
-    public <T> T extractClaim(String token,
-                              Function<Claims, T> claimsResolver) {
+    
 
+    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
         Claims claims = Jwts.parser()
                 .verifyWith(getSignKey())
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
-
         return claimsResolver.apply(claims);
     }
 
-    // Secret Key
     private SecretKey getSignKey() {
-
-        byte[] keyBytes = Decoders.BASE64.decode(SECRET_KEY);
-
+        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
         return Keys.hmacShaKeyFor(keyBytes);
     }
 }
