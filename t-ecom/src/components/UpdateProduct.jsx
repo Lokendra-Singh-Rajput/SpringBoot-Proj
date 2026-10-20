@@ -47,17 +47,21 @@ const UpdateProduct = () => {
         setProduct(response.data);
         setUpdateProduct(response.data);
 
-        const responseImage = await axios.get(
-          `${baseUrl}/api/product/${id}/image`,
-          { responseType: "blob" }
-        );
-        const imageFile = new File(
-          [responseImage.data],
-          response.data.imageName || "product-image.jpg",
-          { type: responseImage.data.type }
-        );
-        setImage(imageFile);
-        setImagePreview(URL.createObjectURL(responseImage.data));
+        try {
+          const responseImage = await axios.get(
+            `${baseUrl}/api/product/${id}/image`,
+            { responseType: "blob" }
+          );
+          if (responseImage.data && responseImage.data.size > 0) {
+            const imageFile = new File(
+              [responseImage.data],
+              response.data.imageName || "product-image.jpg",
+              { type: responseImage.data.type }
+            );
+            setImage(imageFile);
+            setImagePreview(URL.createObjectURL(responseImage.data));
+          }
+        } catch {}
       } catch (error) {
         console.error("Error fetching product:", error);
         toast.error("Failed to load product data.");

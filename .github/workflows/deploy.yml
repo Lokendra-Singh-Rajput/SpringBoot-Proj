@@ -54,6 +54,8 @@ jobs:
           script: |
             cd ~/app
             git pull origin main
+            mkdir -p ~/app/Search/uploads/images
+            chmod -R 777 ~/app/Search/uploads
             docker compose -f docker-compose.prod.yml build backend
             docker compose -f docker-compose.prod.yml build --no-cache frontend
             docker compose -f docker-compose.prod.yml up -d backend frontend
