@@ -62,9 +62,6 @@ public class AuthController {
             resp.put("message", "Verification code sent to " + user.getEmail() + ". Please verify to complete registration.");
             resp.put("email", user.getEmail());
             resp.put("username", user.getUsername());
-            if (user.getVerificationOtp() != null) {
-                resp.put("otp", user.getVerificationOtp());
-            }
             return ResponseEntity.status(HttpStatus.CREATED).body(resp);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -94,12 +91,8 @@ public class AuthController {
 
         try {
             userService.resendVerificationOtp(request.getEmail());
-            User user = userService.findByEmail(request.getEmail().trim().toLowerCase()).orElse(null);
             Map<String, Object> resp = new java.util.HashMap<>();
             resp.put("message", "A new verification code has been dispatched to your email.");
-            if (user != null && user.getVerificationOtp() != null) {
-                resp.put("otp", user.getVerificationOtp());
-            }
             return ResponseEntity.ok(resp);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -114,12 +107,8 @@ public class AuthController {
 
         try {
             userService.forgotPassword(request);
-            User user = userService.findByEmail(request.getEmail().trim().toLowerCase()).orElse(null);
             Map<String, Object> resp = new java.util.HashMap<>();
             resp.put("message", "Password reset code sent to your email.");
-            if (user != null && user.getResetPasswordOtp() != null) {
-                resp.put("otp", user.getResetPasswordOtp());
-            }
             return ResponseEntity.ok(resp);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

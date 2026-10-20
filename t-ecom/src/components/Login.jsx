@@ -95,12 +95,8 @@ const Login = () => {
         password: registerData.password,
       });
 
-      if (response.data?.otp) {
-        setVerifyOtp(response.data.otp);
-        toast.info(`Verification code: ${response.data.otp}`);
-      } else {
-        toast.success(response.data?.message || "Verification code sent! Please check your email.");
-      }
+      setVerifyOtp("");
+      toast.success(response.data?.message || "Verification code sent! Please check your email.");
       setVerifyEmail(registerData.email.trim());
       setShowVerifyModal(true);
       setResendCooldown(60);
@@ -149,12 +145,8 @@ const Login = () => {
       const response = await axios.post("/auth/resend-verification-otp", {
         email: verifyEmail,
       });
-      if (response.data?.otp) {
-        setVerifyOtp(response.data.otp);
-        toast.info(`New verification code: ${response.data.otp}`);
-      } else {
-        toast.success(response.data?.message || "A new verification code has been dispatched.");
-      }
+      setVerifyOtp("");
+      toast.success(response.data?.message || "A new verification code has been dispatched.");
       setResendCooldown(60);
     } catch (error) {
       const errorMsg = error.response?.data?.error || "Failed to resend code. Please try again.";
@@ -174,12 +166,8 @@ const Login = () => {
       const response = await axios.post("/auth/forgot-password", {
         email: forgotEmail.trim(),
       });
-      if (response.data?.otp) {
-        setResetOtp(response.data.otp);
-        toast.info(`Password reset code: ${response.data.otp}`);
-      } else {
-        toast.success(response.data?.message || "Password reset code sent to your email.");
-      }
+      setResetOtp("");
+      toast.success(response.data?.message || "Password reset code sent to your email.");
       setForgotStep(2);
     } catch (error) {
       const errorMsg = error.response?.data?.error || "Unable to send reset code. Please check your email.";
@@ -256,30 +244,6 @@ const Login = () => {
                 autoComplete="current-password"
               />
 
-              <div
-                className="d-flex align-items-center justify-content-between p-2 mt-2 rounded"
-                style={{
-                  background: "rgba(196, 91, 44, 0.08)",
-                  border: "1px dashed #e07a3f",
-                  width: "100%",
-                }}
-              >
-                <div className="small text-start">
-                  <span className="fw-bold" style={{ color: "#c45b2c" }}>Admin Demo:</span>{" "}
-                  <code>admin</code> / <code>admin</code>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-primary py-0 px-2"
-                  style={{ fontSize: "11px" }}
-                  onClick={() => {
-                    setIdentifier("admin");
-                    setPassword("admin");
-                  }}
-                >
-                  Auto-Fill
-                </button>
-              </div>
 
               <button
                 type="button"
